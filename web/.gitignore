@@ -1,0 +1,37 @@
+# Web interface ignore files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Flask
+instance/
+.webassets-cache
+.env
+.flaskenv
+
+# Development
+*.log
+*.pot
+.coverage
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
