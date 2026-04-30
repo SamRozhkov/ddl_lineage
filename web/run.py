@@ -23,7 +23,7 @@ def run_frontend():
 
 if __name__ == '__main__':
     print("Starting DDL Lineage servers...")
-    print("Backend (Flask): http://localhost:5000")
+    print("Backend (Flask): http://127.0.0.1:5001")
     print("Frontend (React): http://localhost:3000")
     print("Press Ctrl+C to stop both servers")
 

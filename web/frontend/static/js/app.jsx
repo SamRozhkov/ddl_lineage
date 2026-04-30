@@ -103,7 +103,7 @@ function DatabaseConnectionForm({ onDdlExtracted }) {
         objects: formData.objects ? formData.objects.split(',').map(s => s.trim()).filter(s => s) : null
       };
 
-      const response = await fetch('http://localhost:5000/api/connect', {
+      const response = await fetch('http://127.0.0.1:5001/api/connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -670,7 +670,7 @@ $$;`,
     }
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:5000/api/analyze', {
+      const response = await fetch('http://127.0.0.1:5001/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ddl }),
