@@ -1,53 +1,150 @@
-# Web Interface for DDL Lineage Analyzer
+# DDL Lineage Web Interface
 
-This directory contains the Flask-based web application for visualizing SQL DDL lineage.
+A web application for interactive SQL DDL lineage analysis with database connectivity.
 
-## 🚀 Quick Start
+## Architecture
 
-### Option 1: Using the shell script
-
-```bash
-cd web
-bash run.sh
-```
-
-### Option 2: Manual setup
-
-```bash
-# Install dependencies
-cd web
-pip install -r requirements.txt
-
-# Start the app
-python app.py
-```
-
-The interface will be available at: **http://127.0.0.1:5000**
-
-## 📂 Structure
+The application is split into separate frontend and backend components:
 
 ```
 web/
-├── app.py                  # Flask application with REST API
-├── templates/
-│   └── index.html         # Main HTML interface
-├── static/
-│   ├── css/
-│   │   └── style.css      # Styling and responsive design
-│   └── js/
-│       └── app.js         # Client-side JavaScript logic
-├── requirements.txt       # Python dependencies
-└── run.sh                 # Startup script
+├── backend/           # Flask API server
+│   ├── app.py        # Main Flask application
+│   ├── requirements.txt
+│   └── db_connectors/ # Modular database connectors
+│       ├── __init__.py
+│       ├── factory.py
+│       ├── postgresql.py
+│       └── mysql.py
+├── frontend/          # React frontend
+│   ├── server.js     # Express server for static files
+│   ├── package.json
+│   ├── static/       # CSS, JS files
+│   └── templates/    # HTML templates
+└── run.py           # Script to run both servers
 ```
 
-## 🎯 Features
+## Features
 
-### UI Components
+- **DDL Analysis**: Parse and analyze SQL DDL statements
+- **Interactive Graph**: Visualize table relationships with React Flow
+- **Database Connectivity**: Extract DDL directly from PostgreSQL/MySQL databases
+- **Modular Architecture**: Easy to extend with new database types
 
-- **SQL Input Panel** - Paste or write SQL DDL statements
-- **Analysis Controls** - Analyze, Clear, Export buttons
-- **Statistics View** - Summary of objects, edges, cycles
-- **Objects Tab** - Detailed list of all database objects with columns
+## Database Connectors
+
+The application uses a modular connector system for database connectivity:
+
+### Adding a New Database Connector
+
+1. Create a new connector class inheriting from `DatabaseConnector`
+2. Implement the required abstract methods:
+   - `connect()`: Establish database connection
+   - `extract_ddl()`: Extract DDL from database
+   - `get_connection_url()`: Return connection URL
+3. Register the connector in `DatabaseConnectorFactory`
+
+Example:
+```python
+from . import DatabaseConnector
+
+class NewDBConnector(DatabaseConnector):
+    def connect(self):
+        # Implementation
+        pass
+
+    def extract_ddl(self, objects=None):
+        # Implementation
+        pass
+
+    def get_connection_url(self):
+        # Implementation
+        pass
+```
+
+## Installation
+
+1. Install backend dependencies:
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+2. Install frontend dependencies:
+```bash
+cd frontend
+npm install
+```
+
+## Running
+
+Run both servers simultaneously:
+```bash
+python run.py
+```
+
+Or run separately:
+
+Backend:
+```bash
+cd backend
+python app.py
+```
+
+Frontend:
+```bash
+cd frontend
+npm start
+```
+
+## API Endpoints
+
+### POST /api/analyze
+Analyze DDL and return lineage data.
+
+**Request:**
+```json
+{
+  "ddl": "CREATE TABLE users (...);"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "objects": [...],
+    "edges": [...],
+    "stats": {...}
+  }
+}
+```
+
+### POST /api/connect
+Connect to database and extract DDL.
+
+**Request:**
+```json
+{
+  "type": "postgresql",
+  "host": "localhost",
+  "port": 5432,
+  "database": "mydb",
+  "username": "user",
+  "password": "pass",
+  "schema": "public",
+  "objects": ["table1", "table2"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "ddl": "CREATE TABLE..."
+}
+```
 - **Cycles Tab** - Detected circular dependencies (if any)
 - **Topo Tab** - Topological sort order for safe DDL execution
 - **Mermaid Diagram** - Interactive visualization of lineage
