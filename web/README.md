@@ -16,11 +16,10 @@ web/
 │       ├── factory.py
 │       ├── postgresql.py
 │       └── mysql.py
-├── frontend/          # React frontend
-│   ├── server.js     # Express server for static files
+├── frontend/          # React frontend (Create React App + Gravity UI)
 │   ├── package.json
-│   ├── static/       # CSS, JS files
-│   └── templates/    # HTML templates
+│   ├── public/
+│   └── src/
 └── run.py           # Script to run both servers
 ```
 
@@ -96,6 +95,9 @@ Frontend:
 cd frontend
 npm start
 ```
+
+The backend listens on `http://127.0.0.1:5001`. The frontend dev server listens on
+`http://localhost:3000` and proxies `/api/*` requests to the backend.
 
 ## API Endpoints
 

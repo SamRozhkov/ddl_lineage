@@ -362,3 +362,10 @@ class TestStats:
         _, r = make(BASIC_DDL)
         assert "topo_order" in r
         assert len(r["topo_order"]) == len(r["objects"])
+
+    def test_topo_dependencies_before_dependents(self):
+        _, r = make(BASIC_DDL)
+        order = r["topo_order"]
+        assert order.index("users") < order.index("orders")
+        assert order.index("orders") < order.index("active_orders")
+        assert order.index("order_items") < order.index("process_order")

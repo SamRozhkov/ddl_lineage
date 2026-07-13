@@ -6,11 +6,11 @@ services:
       context: ..
       dockerfile: web/Dockerfile
     ports:
-      - "5000:5000"
+      - "5001:5001"
     environment:
-      - FLASK_APP=web.app
+      - FLASK_APP=web.backend.app
       - FLASK_ENV=development
     volumes:
       - ../ddl_lineage:/app/ddl_lineage
       - ../web:/app/web
-    command: python web/app.py
+    command: python web/backend/app.py

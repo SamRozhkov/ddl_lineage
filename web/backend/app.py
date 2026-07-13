@@ -5,8 +5,8 @@ Flask application for interactive SQL lineage visualization
 
 from __future__ import annotations
 
-import json
-from flask import Flask, render_template, request, jsonify, make_response
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify
 import sys
 from pathlib import Path
 
@@ -14,20 +14,36 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from ddl_lineage import DDLLineageAnalyzer
-from ddl_lineage.models import LineageEdge
 from db_connectors import DatabaseConnectorFactory
+from project_store import ProjectStore
+
+FRONTEND_BUILD_DIR = Path(__file__).parent.parent / 'frontend' / 'build'
 
 app = Flask(__name__,
-            template_folder='../frontend/templates',
-            static_folder='../frontend/static')
+            template_folder=str(FRONTEND_BUILD_DIR),
+            static_folder=str(FRONTEND_BUILD_DIR / 'static'))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max upload
+
+project_store = ProjectStore()
 
 def add_cors_headers(response):
     """Add CORS headers to response."""
-    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    allowed_origins = {
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5000',
+        'http://127.0.0.1:5001',
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://localhost:5001',
+    }
+    origin = request.headers.get('Origin')
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return response
+
 
 app.after_request(add_cors_headers)
 
@@ -35,7 +51,83 @@ app.after_request(add_cors_headers)
 @app.route('/')
 def index():
     """Serve the main page."""
-    return render_template('index.html')
+    if (FRONTEND_BUILD_DIR / 'index.html').exists():
+        return render_template('index.html')
+    return jsonify({
+        'success': True,
+        'service': 'DDL Lineage API',
+        'frontend': 'Run `npm start` in web/frontend for the React UI.',
+    }), 200
+
+
+@app.route('/api/projects', methods=['GET', 'POST', 'OPTIONS'])
+def manage_projects():
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if request.method == 'GET':
+        return jsonify({
+            'success': True,
+            'projects': project_store.list_projects()
+        }), 200
+
+    payload = request.get_json()
+    if not payload or 'project_name' not in payload:
+        return jsonify({'success': False, 'error': 'Missing project_name'}), 400
+
+    project_name = payload.get('project_name', '').strip()
+    if not project_name:
+        return jsonify({'success': False, 'error': 'Project name cannot be empty'}), 400
+
+    if project_store.project_exists(project_name):
+        return jsonify({'success': False, 'error': 'Project already exists'}), 400
+
+    project_store.ensure_project(project_name, {
+        'name': project_name,
+        'created_at': datetime.utcnow().isoformat() + 'Z',
+    })
+
+    return jsonify({
+        'success': True,
+        'project_name': project_name,
+        'projects': project_store.list_projects()
+    }), 201
+
+
+@app.route('/api/project/<project_name>', methods=['GET', 'POST', 'OPTIONS'])
+def project_state(project_name):
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if request.method == 'GET':
+        if not project_store.project_exists(project_name):
+            return jsonify({'success': False, 'error': 'Project not found'}), 404
+        return jsonify({
+            'success': True,
+            'project': project_store.load_state(project_name)
+        }), 200
+
+    payload = request.get_json() or {}
+    state = payload.get('state')
+    if not isinstance(state, dict):
+        return jsonify({'success': False, 'error': 'Missing state payload'}), 400
+
+    saved = project_store.save_state(project_name, state, action=payload.get('action', 'update'))
+    return jsonify({'success': True, 'project': saved}), 200
+
+
+@app.route('/api/project/<project_name>/history', methods=['GET', 'OPTIONS'])
+def project_history(project_name):
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if not project_store.project_exists(project_name):
+        return jsonify({'success': False, 'error': 'Project not found'}), 404
+
+    return jsonify({
+        'success': True,
+        'history': project_store.list_history(project_name)
+    }), 200
 
 
 @app.route('/api/analyze', methods=['POST', 'OPTIONS'])
@@ -82,16 +174,26 @@ def analyze():
         # Analyze
         analyzer = DDLLineageAnalyzer()
         result = analyzer.analyze(ddl)
-        
+
+        project_name = payload.get('project_name')
+        if project_name:
+            state = {
+                'project_name': project_name,
+                'ddl': ddl,
+                'analysis': {
+                    'objects': result['objects'],
+                    'edges': result['edges'],
+                    'cycles': result['cycles'],
+                    'stats': result['stats'],
+                },
+                'mermaid': _to_mermaid(result),
+            }
+            project_store.save_state(project_name, state, action='analysis')
+
         # Build response
         response = {
             'success': True,
-            'data': {
-                'objects': result['objects'],
-                'edges': result['edges'],
-                'cycles': result['cycles'],
-                'stats': result['stats'],
-            },
+            'data': result,
             'mermaid': _to_mermaid(result),
             'error': None
         }
@@ -105,7 +207,7 @@ def analyze():
         }), 500
 
 
-@app.route('/api/impact/<obj_name>', methods=['POST'])
+@app.route('/api/impact/<obj_name>', methods=['POST', 'OPTIONS'])
 def get_impact(obj_name):
     """
     Get impact analysis for a specific object.
@@ -115,8 +217,10 @@ def get_impact(obj_name):
         "ddl": "CREATE TABLE ...",
     }
     """
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
-        payload = request.get_json()
+        payload = request.get_json() or {}
         ddl = payload.get('ddl', '').strip()
         
         if not ddl:
@@ -138,7 +242,7 @@ def get_impact(obj_name):
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@app.route('/api/topo', methods=['POST'])
+@app.route('/api/topo', methods=['POST', 'OPTIONS'])
 def get_topo():
     """
     Get topological sort order.
@@ -148,8 +252,10 @@ def get_topo():
         "ddl": "CREATE TABLE ...",
     }
     """
+    if request.method == 'OPTIONS':
+        return '', 200
     try:
-        payload = request.get_json()
+        payload = request.get_json() or {}
         ddl = payload.get('ddl', '').strip()
         
         if not ddl:
@@ -225,11 +331,15 @@ def connect_db():
         payload = request.get_json()
         if not payload:
             return jsonify({'success': False, 'error': 'Missing connection data'}), 400
+        payload = dict(payload)
         
         required_fields = ['type', 'host', 'database', 'username', 'password']
         for field in required_fields:
             if field not in payload:
                 return jsonify({'success': False, 'error': f'Missing required field: {field}'}), 400
+
+        if 'port' not in payload or payload['port'] in (None, ''):
+            payload['port'] = 5432 if payload['type'].lower() == 'postgresql' else 3306
         
         # Create database connector using factory
         connector = DatabaseConnectorFactory.create_connector(payload['type'], payload)
@@ -237,6 +347,24 @@ def connect_db():
         # Extract DDL
         with connector:
             ddl = connector.extract_ddl(payload.get('objects'))
+
+        project_name = payload.get('project_name')
+        if project_name:
+            state = {
+                'project_name': project_name,
+                'ddl': ddl,
+                'connection': {
+                    'type': payload['type'],
+                    'host': payload['host'],
+                    'port': payload['port'],
+                    'database': payload['database'],
+                    'username': payload['username'],
+                    'schema': payload.get('schema'),
+                    'objects': payload.get('objects'),
+                },
+                'analysis': None,
+            }
+            project_store.save_state(project_name, state, action='db_connect')
         
         return jsonify({
             'success': True,

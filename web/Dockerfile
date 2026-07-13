@@ -7,10 +7,10 @@ COPY .. .
 
 # Install dependencies
 RUN pip install --no-cache-dir -e .
-RUN pip install --no-cache-dir -r web/requirements.txt
+RUN pip install --no-cache-dir -r web/backend/requirements.txt
 
 # Expose port
-EXPOSE 5000
+EXPOSE 5001
 
 # Run the web interface
-CMD ["python", "-m", "web.app"]
+CMD ["python", "web/backend/app.py"]

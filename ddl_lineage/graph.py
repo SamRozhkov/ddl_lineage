@@ -167,8 +167,8 @@ def topological_sort(node_names: list[str], edges: list[LineageEdge]) -> list[st
 
     for e in edges:
         if e.source in in_degree and e.target in in_degree:
-            adj[e.source].append(e.target)
-            in_degree[e.target] += 1
+            adj[e.target].append(e.source)
+            in_degree[e.source] += 1
 
     q: deque[str] = deque(n for n in node_names if in_degree[n] == 0)
     result: list[str] = []

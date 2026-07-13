@@ -6,7 +6,6 @@ Script to run both backend and frontend servers.
 import subprocess
 import sys
 import os
-import signal
 import time
 
 def run_backend():
@@ -16,10 +15,10 @@ def run_backend():
     ], cwd=os.path.dirname(__file__))
 
 def run_frontend():
-    """Run the Node.js frontend server."""
+    """Run the React frontend dev server."""
     return subprocess.Popen([
-        'node', 'frontend/server.js'
-    ], cwd=os.path.dirname(__file__))
+        'npm', 'start'
+    ], cwd=os.path.join(os.path.dirname(__file__), 'frontend'))
 
 if __name__ == '__main__':
     print("Starting DDL Lineage servers...")

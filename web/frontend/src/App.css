@@ -1,0 +1,274 @@
+:root {
+    color: #1f2430;
+    background: #f6f7f9;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Inter, Arial, sans-serif;
+    background: #f6f7f9;
+}
+
+.app-shell {
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.topbar h1,
+.topbar p,
+.panel h2,
+.pane-header h2 {
+    margin: 0;
+}
+
+.topbar h1 {
+    font-size: 28px;
+    line-height: 36px;
+}
+
+.topbar p {
+    color: #5f6878;
+    margin-top: 4px;
+}
+
+.project-controls {
+    display: flex;
+    gap: 8px;
+    min-width: 360px;
+}
+
+input,
+select,
+textarea,
+button {
+    font: inherit;
+}
+
+input,
+select {
+    width: 100%;
+    height: 36px;
+    border: 1px solid #c8d0dc;
+    border-radius: 6px;
+    padding: 0 10px;
+    background: #fff;
+}
+
+button {
+    height: 36px;
+    border: 0;
+    border-radius: 6px;
+    padding: 0 16px;
+    color: #fff;
+    background: #0b65d8;
+    cursor: pointer;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    background: #a9b4c3;
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+}
+
+.editor-pane,
+.panel,
+.metric {
+    border: 1px solid #d9dee8;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.editor-pane {
+    min-height: calc(100vh - 132px);
+    padding: 16px;
+}
+
+.pane-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.pane-header h2,
+.panel h2 {
+    font-size: 16px;
+    line-height: 24px;
+}
+
+textarea {
+    width: 100%;
+    min-height: calc(100vh - 220px);
+    resize: vertical;
+    border: 1px solid #c8d0dc;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 13px;
+    line-height: 20px;
+}
+
+.error {
+    margin-top: 12px;
+    border-radius: 6px;
+    padding: 10px 12px;
+    color: #7f1d1d;
+    background: #fde7e7;
+}
+
+.results-pane {
+    display: grid;
+    gap: 16px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.metric {
+    padding: 14px;
+}
+
+.metric span {
+    display: block;
+    color: #637083;
+    font-size: 12px;
+    line-height: 18px;
+    text-transform: uppercase;
+}
+
+.metric strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 26px;
+    line-height: 32px;
+}
+
+.panel {
+    padding: 16px;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    margin-top: 12px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    border-bottom: 1px solid #eef1f5;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    color: #536073;
+    font-weight: 600;
+    background: #f8fafc;
+}
+
+.empty {
+    color: #7b8494;
+    text-align: center;
+}
+
+.edge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #eef1f5;
+}
+
+.edge-fk {
+    color: #394150;
+    background: #eceff3;
+}
+
+.edge-read {
+    color: #084b83;
+    background: #dff0ff;
+}
+
+.edge-write {
+    color: #7a2e13;
+    background: #ffe8dc;
+}
+
+.edge-inherits {
+    color: #2f5d16;
+    background: #e5f5da;
+}
+
+.order-line {
+    margin: 10px 0 0;
+    color: #374151;
+    line-height: 22px;
+}
+
+pre {
+    overflow: auto;
+    margin: 12px 0 0;
+    border-radius: 6px;
+    padding: 12px;
+    color: #172033;
+    background: #f4f6f8;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 12px;
+    line-height: 18px;
+}
+
+@media (max-width: 960px) {
+    .app-shell {
+        padding: 16px;
+    }
+
+    .topbar,
+    .project-controls {
+        display: grid;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .workspace {
+        grid-template-columns: 1fr;
+    }
+
+    .editor-pane {
+        min-height: auto;
+    }
+
+    textarea {
+        min-height: 360px;
+    }
+}

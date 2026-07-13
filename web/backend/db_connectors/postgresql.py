@@ -4,7 +4,8 @@ PostgreSQL database connector.
 
 from typing import List, Optional, Dict, Any
 import sqlalchemy as sa
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.engine import URL
 from . import DatabaseConnector
 
 
@@ -16,12 +17,16 @@ class PostgreSQLConnector(DatabaseConnector):
         url = self.get_connection_url()
         self.engine = sa.create_engine(url)
 
-    def get_connection_url(self) -> str:
+    def get_connection_url(self) -> URL:
         """Get PostgreSQL connection URL."""
         config = self.config
-        return (
-            f"postgresql://{config['username']}:{config['password']}"
-            f"@{config['host']}:{config['port']}/{config['database']}"
+        return URL.create(
+            'postgresql+psycopg2',
+            username=config['username'],
+            password=config['password'],
+            host=config['host'],
+            port=int(config.get('port', 5432)),
+            database=config['database'],
         )
 
     def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
@@ -31,15 +36,16 @@ class PostgreSQLConnector(DatabaseConnector):
 
         schema = self.config.get('schema', 'public')
         object_filter = ""
+        params: dict[str, Any] = {'schema': schema}
         if objects:
-            quoted_objects = [f"'{obj}'" for obj in objects]
-            object_filter = f" AND table_name IN ({','.join(quoted_objects)})"
+            object_filter = " AND table_name IN :objects"
+            params['objects'] = list(objects)
 
         ddl_statements = []
 
         with self.engine.connect() as conn:
             # Extract tables and views
-            query = f"""
+            query = text(f"""
             SELECT
                 table_schema,
                 table_name,
@@ -55,17 +61,20 @@ class PostgreSQLConnector(DatabaseConnector):
             FROM information_schema.columns c
             JOIN information_schema.tables t ON c.table_name = t.table_name
                 AND c.table_schema = t.table_schema
-            WHERE t.table_schema = '{schema}' {object_filter}
+            WHERE t.table_schema = :schema {object_filter}
             GROUP BY table_schema, table_name, table_type
             ORDER BY table_name;
-            """
+            """)
+            if objects:
+                query = query.bindparams(bindparam('objects', expanding=True))
 
-            result = conn.execute(text(query))
+            result = conn.execute(query, params)
             for row in result:
                 ddl_statements.append(row.ddl)
 
             # Extract foreign keys
-            fk_query = f"""
+            fk_object_filter = " AND tc.table_name IN :objects" if objects else ""
+            fk_query = text(f"""
             SELECT
                 'ALTER TABLE ' || tc.table_schema || '.' || tc.table_name ||
                 ' ADD CONSTRAINT ' || tc.constraint_name ||
@@ -75,11 +84,13 @@ class PostgreSQLConnector(DatabaseConnector):
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
             JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = '{schema}' {object_filter.replace('table_name', 'tc.table_name')}
+            WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = :schema {fk_object_filter}
             GROUP BY tc.table_schema, tc.table_name, tc.constraint_name, ccu.table_schema, ccu.table_name;
-            """
+            """)
+            if objects:
+                fk_query = fk_query.bindparams(bindparam('objects', expanding=True))
 
-            fk_result = conn.execute(text(fk_query))
+            fk_result = conn.execute(fk_query, params)
             for row in fk_result:
                 ddl_statements.append(row.fk_ddl)
 

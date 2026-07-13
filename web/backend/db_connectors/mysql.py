@@ -4,7 +4,8 @@ MySQL database connector.
 
 from typing import List, Optional, Dict, Any
 import sqlalchemy as sa
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
+from sqlalchemy.engine import URL
 from . import DatabaseConnector
 
 
@@ -16,12 +17,16 @@ class MySQLConnector(DatabaseConnector):
         url = self.get_connection_url()
         self.engine = sa.create_engine(url)
 
-    def get_connection_url(self) -> str:
+    def get_connection_url(self) -> URL:
         """Get MySQL connection URL."""
         config = self.config
-        return (
-            f"mysql+pymysql://{config['username']}:{config['password']}"
-            f"@{config['host']}:{config['port']}/{config['database']}"
+        return URL.create(
+            'mysql+pymysql',
+            username=config['username'],
+            password=config['password'],
+            host=config['host'],
+            port=int(config.get('port', 3306)),
+            database=config['database'],
         )
 
     def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
@@ -31,15 +36,16 @@ class MySQLConnector(DatabaseConnector):
 
         database = self.config['database']
         object_filter = ""
+        params: dict[str, Any] = {'database': database}
         if objects:
-            quoted_objects = [f"'{obj}'" for obj in objects]
-            object_filter = f" AND TABLE_NAME IN ({','.join(quoted_objects)})"
+            object_filter = " AND TABLE_NAME IN :objects"
+            params['objects'] = list(objects)
 
         ddl_statements = []
 
         with self.engine.connect() as conn:
             # Extract tables and views
-            query = f"""
+            query = text(f"""
             SELECT
                 TABLE_SCHEMA,
                 TABLE_NAME,
@@ -60,17 +66,20 @@ class MySQLConnector(DatabaseConnector):
             FROM information_schema.COLUMNS c
             JOIN information_schema.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
                 AND c.TABLE_SCHEMA = t.TABLE_SCHEMA
-            WHERE t.TABLE_SCHEMA = '{database}' {object_filter}
+            WHERE t.TABLE_SCHEMA = :database {object_filter}
             GROUP BY TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
             ORDER BY TABLE_NAME;
-            """
+            """)
+            if objects:
+                query = query.bindparams(bindparam('objects', expanding=True))
 
-            result = conn.execute(text(query))
+            result = conn.execute(query, params)
             for row in result:
                 ddl_statements.append(row.ddl)
 
             # Extract foreign keys
-            fk_query = f"""
+            fk_object_filter = " AND k.TABLE_NAME IN :objects" if objects else ""
+            fk_query = text(f"""
             SELECT
                 CONCAT(
                     'ALTER TABLE ', k.TABLE_SCHEMA, '.', k.TABLE_NAME,
@@ -80,11 +89,13 @@ class MySQLConnector(DatabaseConnector):
                     ' (', GROUP_CONCAT(k.REFERENCED_COLUMN_NAME SEPARATOR ', '), ');'
                 ) as fk_ddl
             FROM information_schema.KEY_COLUMN_USAGE k
-            WHERE k.REFERENCED_TABLE_NAME IS NOT NULL AND k.TABLE_SCHEMA = '{database}' {object_filter.replace('TABLE_NAME', 'k.TABLE_NAME')}
+            WHERE k.REFERENCED_TABLE_NAME IS NOT NULL AND k.TABLE_SCHEMA = :database {fk_object_filter}
             GROUP BY k.TABLE_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME;
-            """
+            """)
+            if objects:
+                fk_query = fk_query.bindparams(bindparam('objects', expanding=True))
 
-            fk_result = conn.execute(text(fk_query))
+            fk_result = conn.execute(fk_query, params)
             for row in fk_result:
                 ddl_statements.append(row.fk_ddl)
 
