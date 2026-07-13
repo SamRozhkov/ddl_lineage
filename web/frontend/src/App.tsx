@@ -5,7 +5,9 @@ import './App.css';
 import type {Graph, TBlock, TConnection} from '@gravity-ui/graph';
 import {EAnchorType, ECanDrag, GraphState} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
-import {ThemeProvider} from '@gravity-ui/uikit';
+import {AbbrSql, Moon, Sun} from '@gravity-ui/icons';
+import {AsideHeader} from '@gravity-ui/navigation';
+import {Button, Icon, Theme, ThemeProvider} from '@gravity-ui/uikit';
 import React from 'react';
 
 type DDLObject = {
@@ -84,6 +86,7 @@ CREATE VIEW active_orders AS
     WHERE o.status = 'active';`;
 
 export const App = () => {
+    const [theme, setTheme] = React.useState<Theme>('light');
     const [ddl, setDdl] = React.useState(sampleDDL);
     const [result, setResult] = React.useState<AnalysisResult | null>(null);
     const [mermaid, setMermaid] = React.useState('');
@@ -91,6 +94,7 @@ export const App = () => {
     const [loading, setLoading] = React.useState(false);
     const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
     const [projectName, setProjectName] = React.useState('');
+    const isDark = theme === 'dark';
 
     const loadProjects = React.useCallback(async () => {
         try {
@@ -160,134 +164,157 @@ export const App = () => {
     };
 
     return (
-        <ThemeProvider theme="light">
-            <main className="app-shell">
-                <header className="topbar">
-                    <div>
-                        <h1>DDL Lineage Analyzer</h1>
-                        <p>Tables, dependencies, cycles and execution order from SQL DDL.</p>
-                    </div>
-                    <div className="project-controls">
-                        <input
-                            value={projectName}
-                            onChange={(event) => setProjectName(event.target.value)}
-                            placeholder="Project name"
-                            aria-label="Project name"
-                        />
-                        <select
-                            value=""
-                            onChange={(event) => loadProject(event.target.value)}
-                            aria-label="Load project"
+        <ThemeProvider theme={theme}>
+            <AsideHeader
+                compact={true}
+                hideCollapseButton={true}
+                logo={{icon: AbbrSql, text: 'DDL Lineage'}}
+                renderFooter={() => (
+                    <div className="sidebar-footer">
+                        <Button
+                            size="l"
+                            view="flat"
+                            title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+                            onClick={() => setTheme(isDark ? 'light' : 'dark')}
                         >
-                            <option value="">Load project</option>
-                            {projects.map((project) => (
-                                <option key={project.project_name} value={project.project_name}>
-                                    {project.display_name}
-                                </option>
-                            ))}
-                        </select>
+                            <Icon data={isDark ? Sun : Moon} />
+                        </Button>
                     </div>
-                </header>
+                )}
+                renderContent={() => (
+                    <main className="app-shell">
+                        <header className="topbar">
+                            <div>
+                                <h1>DDL Lineage Analyzer</h1>
+                                <p>Tables, dependencies, cycles and execution order from SQL DDL.</p>
+                            </div>
+                            <div className="project-controls">
+                                <input
+                                    value={projectName}
+                                    onChange={(event) => setProjectName(event.target.value)}
+                                    placeholder="Project name"
+                                    aria-label="Project name"
+                                />
+                                <select
+                                    value=""
+                                    onChange={(event) => loadProject(event.target.value)}
+                                    aria-label="Load project"
+                                >
+                                    <option value="">Load project</option>
+                                    {projects.map((project) => (
+                                        <option key={project.project_name} value={project.project_name}>
+                                            {project.display_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </header>
 
-                <section className="workspace">
-                    <div className="editor-pane">
-                        <div className="pane-header">
-                            <h2>DDL</h2>
-                            <button type="button" onClick={analyze} disabled={loading || !ddl.trim()}>
-                                {loading ? 'Analyzing...' : 'Analyze'}
-                            </button>
-                        </div>
-                        <textarea
-                            value={ddl}
-                            onChange={(event) => setDdl(event.target.value)}
-                            spellCheck={false}
-                            aria-label="DDL input"
-                        />
-                        {error && <div className="error">{error}</div>}
-                    </div>
+                        <section className="workspace">
+                            <div className="editor-pane">
+                                <div className="pane-header">
+                                    <h2>DDL</h2>
+                                    <button type="button" onClick={analyze} disabled={loading || !ddl.trim()}>
+                                        {loading ? 'Analyzing...' : 'Analyze'}
+                                    </button>
+                                </div>
+                                <textarea
+                                    value={ddl}
+                                    onChange={(event) => setDdl(event.target.value)}
+                                    spellCheck={false}
+                                    aria-label="DDL input"
+                                />
+                                {error && <div className="error">{error}</div>}
+                            </div>
 
-                    <div className="results-pane">
-                        <div className="stats-grid">
-                            <Metric label="Objects" value={result?.stats.total_objects ?? 0} />
-                            <Metric label="Edges" value={result?.stats.total_edges ?? 0} />
-                            <Metric label="Cycles" value={result?.cycles.length ?? 0} />
-                        </div>
+                            <div className="results-pane">
+                                <div className="stats-grid">
+                                    <Metric label="Objects" value={result?.stats.total_objects ?? 0} />
+                                    <Metric label="Edges" value={result?.stats.total_edges ?? 0} />
+                                    <Metric label="Cycles" value={result?.cycles.length ?? 0} />
+                                </div>
 
-                        <section className="panel">
-                            <h2>Objects</h2>
-                            <div className="table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Name</th>
-                                            <th>Type</th>
-                                            <th>Columns</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(result?.objects || []).map((object) => (
-                                            <tr key={`${object.type}-${object.name}`}>
-                                                <td>{object.schema ? `${object.schema}.${object.name}` : object.name}</td>
-                                                <td>{object.type}</td>
-                                                <td>{object.columns.length}</td>
-                                            </tr>
-                                        ))}
-                                        {!result && <EmptyRow colSpan={3} />}
-                                    </tbody>
-                                </table>
+                                <section className="panel">
+                                    <h2>Objects</h2>
+                                    <div className="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Name</th>
+                                                    <th>Type</th>
+                                                    <th>Columns</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(result?.objects || []).map((object) => (
+                                                    <tr key={`${object.type}-${object.name}`}>
+                                                        <td>
+                                                            {object.schema
+                                                                ? `${object.schema}.${object.name}`
+                                                                : object.name}
+                                                        </td>
+                                                        <td>{object.type}</td>
+                                                        <td>{object.columns.length}</td>
+                                                    </tr>
+                                                ))}
+                                                {!result && <EmptyRow colSpan={3} />}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section className="panel">
+                                    <h2>Relationships</h2>
+                                    <div className="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>Source</th>
+                                                    <th>Type</th>
+                                                    <th>Target</th>
+                                                    <th>Details</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(result?.edges || []).map((edge, index) => (
+                                                    <tr key={`${edge.source}-${edge.target}-${edge.type}-${index}`}>
+                                                        <td>{edge.source}</td>
+                                                        <td>
+                                                            <span className={`edge edge-${edge.type.toLowerCase()}`}>
+                                                                {edge.type}
+                                                            </span>
+                                                        </td>
+                                                        <td>{edge.target}</td>
+                                                        <td>{edge.details || edge.via || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                                {!result && <EmptyRow colSpan={4} />}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+
+                                <section className="panel">
+                                    <h2>Execution Order</h2>
+                                    <p className="order-line">
+                                        {result?.topo_order.length ? result.topo_order.join(' -> ') : 'No analysis yet'}
+                                    </p>
+                                </section>
+
+                                <section className="panel">
+                                    <h2>Graph</h2>
+                                    <LineageGraph result={result} />
+                                </section>
+
+                                <section className="panel">
+                                    <h2>Mermaid Source</h2>
+                                    <pre>{mermaid || 'graph LR'}</pre>
+                                </section>
                             </div>
                         </section>
-
-                        <section className="panel">
-                            <h2>Relationships</h2>
-                            <div className="table-wrap">
-                                <table>
-                                    <thead>
-                                        <tr>
-                                            <th>Source</th>
-                                            <th>Type</th>
-                                            <th>Target</th>
-                                            <th>Details</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(result?.edges || []).map((edge, index) => (
-                                            <tr key={`${edge.source}-${edge.target}-${edge.type}-${index}`}>
-                                                <td>{edge.source}</td>
-                                                <td>
-                                                    <span className={`edge edge-${edge.type.toLowerCase()}`}>
-                                                        {edge.type}
-                                                    </span>
-                                                </td>
-                                                <td>{edge.target}</td>
-                                                <td>{edge.details || edge.via || '-'}</td>
-                                            </tr>
-                                        ))}
-                                        {!result && <EmptyRow colSpan={4} />}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-
-                        <section className="panel">
-                            <h2>Execution Order</h2>
-                            <p className="order-line">
-                                {result?.topo_order.length ? result.topo_order.join(' -> ') : 'No analysis yet'}
-                            </p>
-                        </section>
-
-                        <section className="panel">
-                            <h2>Graph</h2>
-                            <LineageGraph result={result} />
-                        </section>
-
-                        <section className="panel">
-                            <h2>Mermaid Source</h2>
-                            <pre>{mermaid || 'graph LR'}</pre>
-                        </section>
-                    </div>
-                </section>
-            </main>
+                    </main>
+                )}
+            />
         </ThemeProvider>
     );
 };
