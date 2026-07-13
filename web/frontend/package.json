@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@gravity-ui/components": "^4.0.1",
+    "@gravity-ui/graph": "^1.11.2",
     "@gravity-ui/icons": "^2.6.0",
     "@gravity-ui/navigation": "^3.1.4",
     "@gravity-ui/uikit": "^7.4.0",

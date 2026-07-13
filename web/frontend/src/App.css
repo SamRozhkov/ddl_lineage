@@ -248,6 +248,85 @@ pre {
     line-height: 18px;
 }
 
+.lineage-graph {
+    height: 420px;
+    overflow: hidden;
+    margin-top: 12px;
+    border: 1px solid #d9dee8;
+    border-radius: 8px;
+    background: #fbfcfe;
+}
+
+.graph-empty {
+    display: grid;
+    min-height: 180px;
+    place-items: center;
+    margin-top: 12px;
+    border: 1px dashed #c8d0dc;
+    border-radius: 8px;
+    color: #7b8494;
+    background: #fbfcfe;
+}
+
+.lineage-node {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #c8d0dc;
+    border-radius: 8px;
+    padding: 10px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgba(31, 36, 48, 0.08);
+}
+
+.lineage-node__type {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+}
+
+.lineage-node__name {
+    overflow: hidden;
+    margin-top: 8px;
+    color: #1f2430;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lineage-node__meta {
+    overflow: hidden;
+    margin-top: 4px;
+    color: #637083;
+    font-size: 12px;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.type-table {
+    color: #084b83;
+    background: #dff0ff;
+}
+
+.type-view,
+.type-materialized_view {
+    color: #0f5c49;
+    background: #ddf4eb;
+}
+
+.type-function,
+.type-procedure {
+    color: #633806;
+    background: #faeeda;
+}
+
 @media (max-width: 960px) {
     .app-shell {
         padding: 16px;
@@ -270,5 +349,9 @@ pre {
 
     textarea {
         min-height: 360px;
+    }
+
+    .lineage-graph {
+        height: 360px;
     }
 }
