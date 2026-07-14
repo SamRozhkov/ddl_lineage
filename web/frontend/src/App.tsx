@@ -14,6 +14,7 @@ type DDLObject = {
     name: string;
     type: string;
     schema: string;
+    temporary?: boolean;
     columns: Array<{
         name: string;
         type: string;
@@ -64,6 +65,7 @@ type GraphBlockMeta = {
     objectType: string;
     schema: string;
     columns: number;
+    temporary: boolean;
 };
 
 type LineageGraphBlock = TBlock<GraphBlockMeta>;
@@ -254,6 +256,9 @@ export const App = () => {
                                                             {object.schema
                                                                 ? `${object.schema}.${object.name}`
                                                                 : object.name}
+                                                            {object.temporary && (
+                                                                <span className="temp-badge">TEMP</span>
+                                                            )}
                                                         </td>
                                                         <td>{object.type}</td>
                                                         <td>{object.columns.length}</td>
@@ -369,10 +374,15 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
         const meta = typedBlock.meta;
 
         return (
-            <GraphBlock graph={currentGraph} block={typedBlock} className="lineage-node">
+            <GraphBlock
+                graph={currentGraph}
+                block={typedBlock}
+                className={`lineage-node${meta?.temporary ? ' lineage-node--temporary' : ''}`}
+            >
                 <div className={`lineage-node__type type-${meta?.objectType.toLowerCase()}`}>
                     {meta?.objectType || 'OBJECT'}
                 </div>
+                {meta?.temporary && <div className="lineage-node__temp">TEMP</div>}
                 <div className="lineage-node__name">{typedBlock.name}</div>
                 <div className="lineage-node__meta">
                     {meta?.schema ? `${meta.schema} · ` : ''}
@@ -448,6 +458,7 @@ function buildGraphEntities(result: AnalysisResult | null): {
                 objectType: object.type,
                 schema: object.schema,
                 columns: object.columns.length,
+                temporary: Boolean(object.temporary),
             },
         };
     });

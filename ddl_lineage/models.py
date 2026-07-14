@@ -40,11 +40,13 @@ class DDLObject:
     type: str               # TABLE | VIEW | MATERIALIZED_VIEW | FUNCTION | PROCEDURE
     schema: str = ""
     columns: list = field(default_factory=list)   # list[Column]
+    temporary: bool = False
     raw: str = ""           # first 100 chars of the original statement
 
     def __repr__(self) -> str:
         schema_pfx = f"{self.schema}." if self.schema else ""
-        return f"DDLObject({self.type} {schema_pfx}{self.name}, {len(self.columns)} cols)"
+        temp_pfx = "TEMP " if self.temporary else ""
+        return f"DDLObject({temp_pfx}{self.type} {schema_pfx}{self.name}, {len(self.columns)} cols)"
 
 
 @dataclass

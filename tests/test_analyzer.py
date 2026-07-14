@@ -81,6 +81,21 @@ CREATE TABLE `products` (
 );
 """
 
+TEMP_DDL = """
+CREATE TEMP TABLE session_orders (
+    id INTEGER PRIMARY KEY,
+    order_id INTEGER REFERENCES orders(id)
+);
+
+CREATE TEMPORARY TABLE IF NOT EXISTS tmp_users (
+    id INTEGER PRIMARY KEY
+);
+
+CREATE GLOBAL TEMPORARY TABLE temp_report (
+    id INTEGER PRIMARY KEY
+);
+"""
+
 ALTER_DDL = """
 CREATE TABLE a (id SERIAL PRIMARY KEY);
 CREATE TABLE b (id SERIAL PRIMARY KEY);
@@ -136,6 +151,14 @@ class TestObjectParsing:
         _, r = make(MYSQL_DDL)
         assert obj_exists(r, "categories", "TABLE")
         assert obj_exists(r, "products", "TABLE")
+
+    def test_temp_tables_marked(self):
+        _, r = make(TEMP_DDL)
+        temp_names = {"session_orders", "tmp_users", "temp_report"}
+        for name in temp_names:
+            obj = next(o for o in r["objects"] if o["name"] == name)
+            assert obj["type"] == "TABLE"
+            assert obj["temporary"] is True
 
     def test_implicit_object_auto_registered(self):
         ddl = "CREATE VIEW v AS SELECT * FROM nonexistent_table;"
