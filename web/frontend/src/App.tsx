@@ -152,9 +152,7 @@ export const App = () => {
     return (
         <ThemeProvider theme="light">
             <main className="app-shell">
-                <AsideHeader compact={false}>
-
-                </AsideHeader>
+                
                 <header className="topbar">
                     <div>
                         <h1>DDL Lineage Analyzer</h1>

@@ -13,6 +13,7 @@ ENV/
 *.swo
 *~
 .DS_Store
+web/frontend/node_modues
 
 # Flask
 instance/
