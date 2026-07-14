@@ -160,6 +160,12 @@ class TestObjectParsing:
             assert obj["type"] == "TABLE"
             assert obj["temporary"] is True
 
+    def test_create_temp_table_short_form_marked(self):
+        _, r = make("CREATE TEMP TABLE t (id INTEGER);")
+        obj = next(o for o in r["objects"] if o["name"] == "t")
+        assert obj["type"] == "TABLE"
+        assert obj["temporary"] is True
+
     def test_implicit_object_auto_registered(self):
         ddl = "CREATE VIEW v AS SELECT * FROM nonexistent_table;"
         _, r = make(ddl)

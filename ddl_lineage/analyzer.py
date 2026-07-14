@@ -50,6 +50,15 @@ _WRITE_PATTERNS: list[tuple[str, str]] = [
     (r"TRUNCATE\s+(?:TABLE\s+)?(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?", "TRUNCATE"),
 ]
 
+_CREATE_TABLE_RE = re.compile(
+    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?(?:TEMP(?:ORARY)?\s+)?TABLE\b",
+    re.IGNORECASE,
+)
+_CREATE_TEMP_TABLE_RE = re.compile(
+    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\s+TABLE\b",
+    re.IGNORECASE,
+)
+
 
 class DDLLineageAnalyzer:
     """
@@ -136,19 +145,15 @@ class DDLLineageAnalyzer:
     # ------------------------------------------------------------------
 
     def _dispatch(self, stmt: str) -> None:
-        u = stmt.upper()
-        if re.match(
-            r"CREATE\s+(OR\s+REPLACE\s+)?((GLOBAL|LOCAL)\s+)?(TEMP(?:ORARY)?\s+)?TABLE",
-            u,
-        ):
+        if _CREATE_TABLE_RE.match(stmt):
             self._parse_table(stmt)
-        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW", u):
+        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW", stmt, re.IGNORECASE):
             self._parse_view(stmt, "MATERIALIZED_VIEW")
-        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?VIEW", u):
+        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?VIEW", stmt, re.IGNORECASE):
             self._parse_view(stmt, "VIEW")
-        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)", u):
+        elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)", stmt, re.IGNORECASE):
             self._parse_function(stmt)
-        elif re.match(r"ALTER\s+TABLE", u):
+        elif re.match(r"ALTER\s+TABLE", stmt, re.IGNORECASE):
             self._parse_alter_table(stmt)
 
     # ------------------------------------------------------------------
@@ -162,11 +167,7 @@ class DDLLineageAnalyzer:
 
         body = _extract_paren_body(stmt)
         columns = _parse_table_columns(_remove_comments(body))
-        temporary = bool(re.match(
-            r"CREATE\s+(OR\s+REPLACE\s+)?((GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\s+TABLE",
-            stmt,
-            re.IGNORECASE,
-        ))
+        temporary = bool(_CREATE_TEMP_TABLE_RE.match(stmt))
         self.objects[name] = DDLObject(
             name=name, type="TABLE", schema=schema,
             columns=columns, temporary=temporary, raw=stmt[:100],
