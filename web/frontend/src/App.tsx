@@ -87,6 +87,7 @@ CREATE VIEW active_orders AS
 
 export const App = () => {
     const [theme, setTheme] = React.useState<Theme>('light');
+    const [compact, setCompact] = React.useState(true);
     const [ddl, setDdl] = React.useState(sampleDDL);
     const [result, setResult] = React.useState<AnalysisResult | null>(null);
     const [mermaid, setMermaid] = React.useState('');
@@ -166,8 +167,9 @@ export const App = () => {
     return (
         <ThemeProvider theme={theme}>
             <AsideHeader
-                compact={true}
-                hideCollapseButton={true}
+                compact={compact}
+                onChangeCompact={setCompact}
+                hideCollapseButton={false}
                 logo={{icon: AbbrSql, text: 'DDL Lineage'}}
                 renderFooter={() => (
                     <div className="sidebar-footer">
