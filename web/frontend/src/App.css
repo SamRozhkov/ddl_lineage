@@ -282,12 +282,81 @@ pre {
 }
 
 .lineage-graph {
-    height: 420px;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: min(68vh, 720px);
+    min-height: 460px;
     overflow: hidden;
     margin-top: 12px;
     border: 1px solid var(--g-color-line-generic);
     border-radius: 8px;
     background: var(--g-color-base-generic);
+}
+
+.lineage-graph--large {
+    height: min(76vh, 860px);
+    min-height: 560px;
+}
+
+.lineage-graph--dense {
+    height: min(84vh, 980px);
+    min-height: 680px;
+}
+
+.lineage-graph__toolbar {
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--g-color-line-generic);
+    padding: 8px 10px;
+    color: var(--g-color-text-secondary);
+    background: var(--g-color-base-background);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.lineage-graph__actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lineage-graph__toolbar button {
+    display: inline-grid;
+    place-items: center;
+    height: 28px;
+    min-width: 28px;
+    border: 1px solid var(--g-color-line-generic);
+    border-radius: 6px;
+    padding: 0 10px;
+    color: var(--g-color-text-primary);
+    background: var(--g-color-base-background);
+    cursor: pointer;
+    font: inherit;
+}
+
+.lineage-graph__toolbar button[aria-label] {
+    padding: 0;
+}
+
+.lineage-graph__canvas {
+    min-height: 0;
+}
+
+.lineage-graph:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    min-height: 100vh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--g-color-base-generic);
+}
+
+.lineage-graph:fullscreen .lineage-graph__toolbar {
+    padding: 10px 14px;
 }
 
 .graph-empty {
@@ -368,6 +437,45 @@ pre {
     white-space: nowrap;
 }
 
+.lineage-graph--large .lineage-node {
+    padding: 9px;
+}
+
+.lineage-graph--large .lineage-node__name {
+    font-size: 14px;
+    line-height: 18px;
+}
+
+.lineage-graph--dense .lineage-node {
+    padding: 8px;
+    border-radius: 6px;
+}
+
+.lineage-graph--dense .lineage-node__type {
+    min-height: 20px;
+    padding: 1px 7px;
+    font-size: 10px;
+    line-height: 14px;
+}
+
+.lineage-graph--dense .lineage-node__temp {
+    top: 8px;
+    right: 8px;
+    padding: 1px 6px;
+}
+
+.lineage-graph--dense .lineage-node__name {
+    margin-top: 6px;
+    font-size: 13px;
+    line-height: 17px;
+}
+
+.lineage-graph--dense .lineage-node__meta {
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 16px;
+}
+
 .type-table {
     color: #084b83;
     background: #dff0ff;
@@ -411,5 +519,6 @@ pre {
 
     .lineage-graph {
         height: 360px;
+        min-height: 360px;
     }
 }

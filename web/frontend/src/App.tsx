@@ -5,7 +5,7 @@ import './App.css';
 import type {Graph, TBlock, TConnection} from '@gravity-ui/graph';
 import {EAnchorType, ECanDrag, GraphState} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
-import {AbbrSql, Moon, Sun} from '@gravity-ui/icons';
+import {AbbrSql, ArrowsExpand, ChevronsCollapseUpRight, Moon, Sun} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
 import {Button, Icon, Theme, ThemeProvider} from '@gravity-ui/uikit';
 import Editor from '@monaco-editor/react';
@@ -371,6 +371,8 @@ const EmptyRow = ({colSpan}: {colSpan: number}) => (
 );
 
 const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
+    const graphContainerRef = React.useRef<HTMLDivElement | null>(null);
+    const [isFullscreen, setIsFullscreen] = React.useState(false);
     const graphConfig = React.useMemo(
         () => ({
             settings: {
@@ -390,13 +392,48 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
     const {graph, setEntities, start} = useGraph(graphConfig);
 
     const graphEntities = React.useMemo(() => buildGraphEntities(result), [result]);
+    const blockIds = React.useMemo(
+        () => graphEntities.blocks.map((block) => block.id),
+        [graphEntities.blocks],
+    );
+
+    const fitGraph = React.useCallback(() => {
+        window.requestAnimationFrame(() => {
+            if (blockIds.length) {
+                graph.zoomTo(blockIds, {padding: blockIds.length > 80 ? 48 : 96});
+            } else {
+                graph.zoomTo('center', {padding: 96});
+            }
+        });
+    }, [blockIds, graph]);
+
+    React.useEffect(() => {
+        const handleFullscreenChange = () => {
+            setIsFullscreen(document.fullscreenElement === graphContainerRef.current);
+            fitGraph();
+        };
+
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    }, [fitGraph]);
 
     React.useEffect(() => {
         setEntities(graphEntities);
-        window.requestAnimationFrame(() => {
-            graph.zoomTo('center', {padding: 160});
-        });
-    }, [graph, graphEntities, setEntities]);
+        fitGraph();
+    }, [fitGraph, graphEntities, setEntities]);
+
+    const toggleFullscreen = React.useCallback(async () => {
+        if (!graphContainerRef.current) {
+            return;
+        }
+
+        if (document.fullscreenElement === graphContainerRef.current) {
+            await document.exitFullscreen();
+            return;
+        }
+
+        await graphContainerRef.current.requestFullscreen();
+    }, []);
 
     const renderBlock = React.useCallback((currentGraph: Graph, block: TBlock) => {
         const typedBlock = block as LineageGraphBlock;
@@ -425,15 +462,40 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
         return <div className="graph-empty">Run analysis to render the graph.</div>;
     }
 
+    const graphSizeClass = result.stats.total_objects > 80
+        ? 'lineage-graph--dense'
+        : result.stats.total_objects > 32
+            ? 'lineage-graph--large'
+            : '';
+
     return (
-        <div className="lineage-graph">
+        <div ref={graphContainerRef} className={`lineage-graph ${graphSizeClass}`}>
+            <div className="lineage-graph__toolbar">
+                <span>
+                    {result.stats.total_objects} objects · {result.stats.total_edges} edges
+                </span>
+                <div className="lineage-graph__actions">
+                    <button type="button" onClick={fitGraph}>
+                        Fit
+                    </button>
+                    <button
+                        type="button"
+                        aria-label={isFullscreen ? 'Exit fullscreen' : 'Open graph fullscreen'}
+                        title={isFullscreen ? 'Exit fullscreen' : 'Open graph fullscreen'}
+                        onClick={toggleFullscreen}
+                    >
+                        <Icon data={isFullscreen ? ChevronsCollapseUpRight : ArrowsExpand} size={16} />
+                    </button>
+                </div>
+            </div>
             <GraphCanvas
+                className="lineage-graph__canvas"
                 graph={graph}
                 renderBlock={renderBlock}
                 onStateChanged={({state}) => {
                     if (state === GraphState.ATTACHED) {
                         start();
-                        graph.zoomTo('center', {padding: 160});
+                        fitGraph();
                     }
                 }}
             />
@@ -450,22 +512,21 @@ function buildGraphEntities(result: AnalysisResult | null): {
     }
 
     const levelByName = computeLevels(result);
-    const lanes = new Map<number, number>();
-    const blockWidth = 190;
-    const blockHeight = 96;
-    const horizontalGap = 270;
-    const verticalGap = 138;
+    const objectCount = result.objects.length;
+    const blockWidth = objectCount > 80 ? 150 : objectCount > 32 ? 168 : 190;
+    const blockHeight = objectCount > 80 ? 76 : objectCount > 32 ? 84 : 96;
+    const horizontalGap = objectCount > 80 ? 220 : objectCount > 32 ? 240 : 270;
+    const verticalGap = objectCount > 80 ? 104 : objectCount > 32 ? 116 : 138;
+    const maxRowsPerLevel = objectCount > 80 ? 10 : objectCount > 32 ? 8 : 12;
+    const levelSlots = layoutLevelSlots(result.objects, levelByName, maxRowsPerLevel);
 
     const blocks = result.objects.map((object) => {
-        const level = levelByName.get(object.name) ?? 0;
-        const lane = lanes.get(level) ?? 0;
-        lanes.set(level, lane + 1);
-
+        const slot = levelSlots.get(object.name) || {x: 0, y: 0};
         return {
             id: object.name,
             is: 'lineage-object',
-            x: level * horizontalGap,
-            y: lane * verticalGap,
+            x: slot.x * horizontalGap,
+            y: slot.y * verticalGap,
             width: blockWidth,
             height: blockHeight,
             name: object.name,
@@ -506,6 +567,44 @@ function buildGraphEntities(result: AnalysisResult | null): {
         }));
 
     return {blocks, connections};
+}
+
+function layoutLevelSlots(
+    objects: DDLObject[],
+    levelByName: Map<string, number>,
+    maxRowsPerLevel: number,
+): Map<string, {x: number; y: number}> {
+    const grouped = new Map<number, DDLObject[]>();
+    objects.forEach((object) => {
+        const level = levelByName.get(object.name) ?? 0;
+        grouped.set(level, [...(grouped.get(level) || []), object]);
+    });
+
+    const slots = new Map<string, {x: number; y: number}>();
+    let xOffset = 0;
+
+    Array.from(grouped.entries())
+        .sort(([left], [right]) => left - right)
+        .forEach(([, levelObjects]) => {
+            const sortedObjects = [...levelObjects].sort((left, right) => {
+                if (left.type !== right.type) {
+                    return left.type.localeCompare(right.type);
+                }
+                return left.name.localeCompare(right.name);
+            });
+            const columnsInLevel = Math.max(1, Math.ceil(sortedObjects.length / maxRowsPerLevel));
+
+            sortedObjects.forEach((object, index) => {
+                slots.set(object.name, {
+                    x: xOffset + Math.floor(index / maxRowsPerLevel),
+                    y: index % maxRowsPerLevel,
+                });
+            });
+
+            xOffset += columnsInLevel + 1;
+        });
+
+    return slots;
 }
 
 function computeLevels(result: AnalysisResult): Map<string, number> {
