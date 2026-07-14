@@ -166,6 +166,17 @@ class TestObjectParsing:
         assert obj["type"] == "TABLE"
         assert obj["temporary"] is True
 
+    def test_create_temp_table_if_not_exists_as_select_marked(self):
+        ddl = """
+        CREATE TEMP TABLE IF NOT EXISTS sng_hr.fer_pre_appointments AS
+            SELECT 1 AS id;
+        """
+        _, r = make(ddl)
+        obj = next(o for o in r["objects"] if o["name"] == "fer_pre_appointments")
+        assert obj["schema"] == "sng_hr"
+        assert obj["type"] == "TABLE"
+        assert obj["temporary"] is True
+
     def test_implicit_object_auto_registered(self):
         ddl = "CREATE VIEW v AS SELECT * FROM nonexistent_table;"
         _, r = make(ddl)

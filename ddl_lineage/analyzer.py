@@ -51,11 +51,13 @@ _WRITE_PATTERNS: list[tuple[str, str]] = [
 ]
 
 _CREATE_TABLE_RE = re.compile(
-    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?(?:TEMP(?:ORARY)?\s+)?TABLE\b",
+    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?"
+    r"(?:TEMP(?:ORARY)?\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?",
     re.IGNORECASE,
 )
 _CREATE_TEMP_TABLE_RE = re.compile(
-    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\s+TABLE\b",
+    r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?"
+    r"TEMP(?:ORARY)?\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?",
     re.IGNORECASE,
 )
 
