@@ -15,8 +15,11 @@ from .parser import (
     _cte_names,
     _extract_function_body,
     _extract_object_name,
-    _extract_paren_body,
+    _extract_table_definition_body,
+    _parse_ctas_columns,
     _parse_column_lineage,
+    _parse_returns_table_columns,
+    _parse_select_columns,
     _parse_table_columns,
     _read_references,
     _remove_comments,
@@ -167,8 +170,8 @@ class DDLLineageAnalyzer:
         if not name:
             return
 
-        body = _extract_paren_body(stmt)
-        columns = _parse_table_columns(_remove_comments(body))
+        body = _extract_table_definition_body(stmt)
+        columns = _parse_table_columns(_remove_comments(body)) if body else _parse_ctas_columns(stmt)
         temporary = bool(_CREATE_TEMP_TABLE_RE.match(stmt))
         self.objects[name] = DDLObject(
             name=name, type="TABLE", schema=schema,
@@ -209,12 +212,13 @@ class DDLLineageAnalyzer:
         schema, name = _extract_object_name(stmt)
         if not name:
             return
-        self.objects[name] = DDLObject(
-            name=name, type=obj_type, schema=schema, raw=stmt[:100],
-        )
         body_m = re.search(r"\bAS\b(.+)", stmt, re.IGNORECASE | re.DOTALL)
+        body = body_m.group(1) if body_m else ""
+        self.objects[name] = DDLObject(
+            name=name, type=obj_type, schema=schema,
+            columns=_parse_select_columns(body), raw=stmt[:100],
+        )
         if body_m:
-            body = body_m.group(1)
             ctes = _cte_names(body)
             for edge in _read_references(body, name, ctes):
                 self._add_edge(edge)
@@ -229,7 +233,10 @@ class DDLLineageAnalyzer:
             return
         obj_type = m.group(1).upper()
         name = m.group(2).lower()
-        self.objects[name] = DDLObject(name=name, type=obj_type, raw=stmt[:100])
+        columns = _parse_returns_table_columns(stmt)
+        if not columns:
+            columns = self._columns_from_returns_setof(stmt)
+        self.objects[name] = DDLObject(name=name, type=obj_type, columns=columns, raw=stmt[:100])
 
         body = _extract_function_body(stmt)
         ctes = _cte_names(body)
@@ -252,6 +259,18 @@ class DDLLineageAnalyzer:
                     source=name, target=t, edge_type="WRITE",
                     via=name, details=detail, col_lineage=col_lin,
                 ))
+
+    def _columns_from_returns_setof(self, stmt: str) -> list[Column]:
+        m = re.search(
+            r"\bRETURNS\s+SETOF\s+(?:`?\"?\w+\"?`?\.)?`?\"?(\w+)\"?`?",
+            stmt,
+            re.IGNORECASE,
+        )
+        if not m:
+            return []
+
+        table = self.objects.get(m.group(1).lower())
+        return list(table.columns) if table else []
 
     def _parse_alter_table(self, stmt: str) -> None:
         m = re.search(

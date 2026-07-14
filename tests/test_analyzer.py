@@ -217,6 +217,75 @@ class TestColumnParsing:
         assert oi_col is not None
         assert "orders" in oi_col["fk_to"]
 
+    def test_create_table_as_select_columns(self):
+        ddl = """
+        CREATE TABLE user_stats AS
+        SELECT id, email AS user_email, count(*) AS total
+        FROM users;
+        """
+        _, r = make(ddl)
+        table = next(o for o in r["objects"] if o["name"] == "user_stats")
+        assert [c["name"] for c in table["columns"]] == ["id", "user_email", "total"]
+
+    def test_create_table_as_select_ignores_expression_parentheses(self):
+        ddl = """
+        CREATE TABLE normalized_users AS
+        SELECT CAST(id AS INTEGER) AS user_id, COALESCE(email, 'unknown') AS email
+        FROM users;
+        """
+        _, r = make(ddl)
+        table = next(o for o in r["objects"] if o["name"] == "normalized_users")
+        assert [c["name"] for c in table["columns"]] == ["user_id", "email"]
+
+    def test_view_columns_from_select_list(self):
+        _, r = make(BASIC_DDL)
+        view = next(o for o in r["objects"] if o["name"] == "active_orders")
+        assert [c["name"] for c in view["columns"]] == ["id", "email"]
+
+    def test_view_columns_from_expression_aliases(self):
+        ddl = """
+        CREATE VIEW user_summary AS
+        SELECT u.id AS user_id, COUNT(o.id) AS order_count
+        FROM users u
+        JOIN orders o ON o.user_id = u.id;
+        """
+        _, r = make(ddl)
+        view = next(o for o in r["objects"] if o["name"] == "user_summary")
+        assert [c["name"] for c in view["columns"]] == ["user_id", "order_count"]
+
+    def test_function_returns_table_columns(self):
+        ddl = """
+        CREATE FUNCTION get_active_users()
+        RETURNS TABLE (user_id INTEGER, email TEXT)
+        AS $$
+        BEGIN
+            RETURN QUERY SELECT id, email FROM users;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+        _, r = make(ddl)
+        fn = next(o for o in r["objects"] if o["name"] == "get_active_users")
+        assert [c["name"] for c in fn["columns"]] == ["user_id", "email"]
+
+    def test_function_returns_setof_known_table_columns(self):
+        ddl = """
+        CREATE TABLE users (
+            id SERIAL PRIMARY KEY,
+            email TEXT
+        );
+
+        CREATE FUNCTION list_users()
+        RETURNS SETOF users
+        AS $$
+        BEGIN
+            RETURN QUERY SELECT * FROM users;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+        _, r = make(ddl)
+        fn = next(o for o in r["objects"] if o["name"] == "list_users")
+        assert [c["name"] for c in fn["columns"]] == ["id", "email"]
+
 
 # ---------------------------------------------------------------------------
 # FK edges

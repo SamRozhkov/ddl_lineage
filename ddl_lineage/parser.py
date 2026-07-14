@@ -145,6 +145,69 @@ def _extract_paren_body(stmt: str) -> str:
     return ""
 
 
+def _extract_table_definition_body(stmt: str) -> str:
+    """Return CREATE TABLE column definitions when they immediately follow the table name."""
+    m = re.search(
+        r"\bTABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+        r"(?:`?\"?\w+\"?`?\.)?`?\"?\w+\"?`?",
+        stmt,
+        re.IGNORECASE,
+    )
+    if not m:
+        return ""
+
+    i = m.end()
+    while i < len(stmt) and stmt[i].isspace():
+        i += 1
+    if i >= len(stmt) or stmt[i] != "(":
+        return ""
+
+    return _extract_balanced_paren_body(stmt, i)
+
+
+def _extract_balanced_paren_body(text: str, start: int) -> str:
+    """Return the body of a balanced parenthesized block starting at *start*."""
+    depth = 0
+    in_sq = False
+    in_dq = False
+    in_bt = False
+    body_start = start + 1
+    i = start
+
+    while i < len(text):
+        ch = text[i]
+
+        if in_sq:
+            if ch == "'" and i + 1 < len(text) and text[i + 1] == "'":
+                i += 2
+                continue
+            if ch == "'":
+                in_sq = False
+        elif in_dq:
+            if ch == '"':
+                in_dq = False
+        elif in_bt:
+            if ch == "`":
+                in_bt = False
+        else:
+            if ch == "'":
+                in_sq = True
+            elif ch == '"':
+                in_dq = True
+            elif ch == "`":
+                in_bt = True
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+                if depth == 0:
+                    return text[body_start:i]
+
+        i += 1
+
+    return ""
+
+
 def _extract_function_body(stmt: str) -> str:
     """
     Extract the executable body from a CREATE FUNCTION / PROCEDURE statement.
@@ -277,24 +340,7 @@ def _parse_table_columns(body: str) -> list[Column]:
     """
     columns: list[Column] = []
 
-    # Split at commas that are at depth 0
-    parts: list[str] = []
-    cur: list[str] = []
-    depth = 0
-    for ch in body:
-        if ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth -= 1
-        if ch == "," and depth == 0:
-            parts.append("".join(cur).strip())
-            cur = []
-        else:
-            cur.append(ch)
-    if cur:
-        parts.append("".join(cur).strip())
-
-    for part in parts:
+    for part in _split_top_level_csv(body):
         part = part.strip()
         if not part:
             continue
@@ -346,6 +392,177 @@ def _parse_table_columns(body: str) -> list[Column]:
         columns.append(col)
 
     return columns
+
+
+def _parse_ctas_columns(stmt: str) -> list[Column]:
+    """Infer CREATE TABLE AS SELECT output columns from the SELECT list."""
+    return _parse_select_columns(stmt)
+
+
+def _parse_select_columns(stmt: str) -> list[Column]:
+    """Infer output columns from the top-level SELECT list in *stmt*."""
+    select_list = _extract_select_list(stmt)
+    if not select_list:
+        return []
+
+    columns: list[Column] = []
+    used_names: set[str] = set()
+    for index, expr in enumerate(_split_top_level_csv(select_list), start=1):
+        name = _select_expression_name(expr, index)
+        if name in used_names:
+            name = f"{name}_{index}"
+        used_names.add(name)
+        columns.append(Column(name=name))
+
+    return columns
+
+
+def _parse_returns_table_columns(stmt: str) -> list[Column]:
+    """Parse column declarations from a PostgreSQL RETURNS TABLE (...) clause."""
+    m = re.search(r"\bRETURNS\s+TABLE\s*\(", stmt, re.IGNORECASE)
+    if not m:
+        return []
+
+    body = _extract_balanced_paren_body(stmt, m.end() - 1)
+    return _parse_table_columns(body)
+
+
+def _extract_select_list(stmt: str) -> str:
+    start = _find_top_level_keyword(stmt, 0, {"SELECT"})
+    if start == -1:
+        return ""
+
+    start += len("SELECT")
+    end = _find_top_level_keyword(
+        stmt,
+        start,
+        {"FROM", "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "UNION", "INTERSECT", "EXCEPT"},
+    )
+    return stmt[start:end].strip() if end != -1 else stmt[start:].strip().rstrip(";")
+
+
+def _find_top_level_keyword(text: str, start: int, keywords: set[str]) -> int:
+    depth = 0
+    in_sq = False
+    in_dq = False
+    in_bt = False
+    i = start
+
+    while i < len(text):
+        ch = text[i]
+        if in_sq:
+            if ch == "'" and i + 1 < len(text) and text[i + 1] == "'":
+                i += 2
+                continue
+            if ch == "'":
+                in_sq = False
+        elif in_dq:
+            if ch == '"':
+                in_dq = False
+        elif in_bt:
+            if ch == "`":
+                in_bt = False
+        else:
+            if ch == "'":
+                in_sq = True
+            elif ch == '"':
+                in_dq = True
+            elif ch == "`":
+                in_bt = True
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth = max(0, depth - 1)
+            elif depth == 0 and (i == 0 or not _is_identifier_char(text[i - 1])):
+                for keyword in keywords:
+                    if (
+                        text[i : i + len(keyword)].upper() == keyword
+                        and (i + len(keyword) == len(text) or not _is_identifier_char(text[i + len(keyword)]))
+                    ):
+                        return i
+        i += 1
+
+    return -1
+
+
+def _split_top_level_csv(text: str) -> list[str]:
+    parts: list[str] = []
+    cur: list[str] = []
+    depth = 0
+    in_sq = False
+    in_dq = False
+    in_bt = False
+    i = 0
+
+    while i < len(text):
+        ch = text[i]
+        if in_sq:
+            cur.append(ch)
+            if ch == "'" and i + 1 < len(text) and text[i + 1] == "'":
+                cur.append(text[i + 1])
+                i += 2
+                continue
+            if ch == "'":
+                in_sq = False
+        elif in_dq:
+            cur.append(ch)
+            if ch == '"':
+                in_dq = False
+        elif in_bt:
+            cur.append(ch)
+            if ch == "`":
+                in_bt = False
+        else:
+            if ch == "'":
+                in_sq = True
+                cur.append(ch)
+            elif ch == '"':
+                in_dq = True
+                cur.append(ch)
+            elif ch == "`":
+                in_bt = True
+                cur.append(ch)
+            elif ch == "(":
+                depth += 1
+                cur.append(ch)
+            elif ch == ")":
+                depth = max(0, depth - 1)
+                cur.append(ch)
+            elif ch == "," and depth == 0:
+                parts.append("".join(cur).strip())
+                cur = []
+            else:
+                cur.append(ch)
+        i += 1
+
+    tail = "".join(cur).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _select_expression_name(expr: str, index: int) -> str:
+    expr = expr.strip().rstrip(";")
+    alias_m = re.search(r"\bAS\s+`?\"?(\w+)\"?`?$", expr, re.IGNORECASE)
+    if alias_m:
+        return alias_m.group(1).lower()
+
+    trailing_alias_m = re.search(r"\s+`?\"?(\w+)\"?`?$", expr)
+    if trailing_alias_m:
+        alias = trailing_alias_m.group(1)
+        prefix = expr[: trailing_alias_m.start()].strip()
+        if prefix and alias.upper() not in SQL_KW:
+            return alias.lower()
+
+    identifier_m = re.match(r"(?:`?\"?\w+\"?`?\.)?`?\"?(\w+)\"?`?$", expr)
+    if identifier_m:
+        return identifier_m.group(1).lower()
+
+    return f"column_{index}"
+
+
+def _is_identifier_char(ch: str) -> bool:
+    return ch.isalnum() or ch == "_"
 
 
 # ---------------------------------------------------------------------------
