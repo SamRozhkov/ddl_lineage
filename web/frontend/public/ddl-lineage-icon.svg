@@ -1,0 +1,13 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">DDL Lineage Analyzer</title>
+  <desc id="desc">A simplified database table connected to lineage nodes.</desc>
+  <path d="M16 17C16 13.6863 23.1634 11 32 11C40.8366 11 48 13.6863 48 17V31C48 34.3137 40.8366 37 32 37C23.1634 37 16 34.3137 16 31V17Z" fill="#0B65D8"/>
+  <path d="M16 17C16 20.3137 23.1634 23 32 23C40.8366 23 48 20.3137 48 17" stroke="#DFF0FF" stroke-width="4" stroke-linecap="round"/>
+  <path d="M16 30C16 33.3137 23.1634 36 32 36C40.8366 36 48 33.3137 48 30" stroke="#72B5FF" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 37V45" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 45H21" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 45H43" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="21" cy="51" r="6" fill="#9BD36A" stroke="#2F5D16" stroke-width="3"/>
+  <circle cx="43" cy="51" r="6" fill="#FF9D66" stroke="#7A2E13" stroke-width="3"/>
+  <circle cx="32" cy="45" r="5" fill="#FFFFFF" stroke="#0B65D8" stroke-width="3"/>
+</svg>

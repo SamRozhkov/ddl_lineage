@@ -5,7 +5,7 @@ import './App.css';
 import type {Graph, TBlock, TConnection, TGraphColors} from '@gravity-ui/graph';
 import {EAnchorType, ECanDrag, GraphState} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
-import {AbbrSql, ArrowsExpand, ChevronsCollapseUpRight, Moon, Sun} from '@gravity-ui/icons';
+import {ArrowsExpand, ChevronsCollapseUpRight, Moon, Sun} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
 import {Button, Icon, Theme, ThemeProvider} from '@gravity-ui/uikit';
 import Editor from '@monaco-editor/react';
@@ -123,10 +123,14 @@ export const App = () => {
     return (
         <ThemeProvider theme={theme}>
             <AsideHeader
+                headerDecoration={true}
                 compact={compact}
                 onChangeCompact={setCompact}
                 hideCollapseButton={false}
-                logo={{icon: AbbrSql, text: 'DDL Lineage'}}
+                logo={{
+                    iconSrc: `${process.env.PUBLIC_URL}/ddl-lineage-icon.svg`,
+                    text: 'DDL Lineage',
+                }}
                 renderFooter={() => (
                     <div className="sidebar-footer">
                         <Button
