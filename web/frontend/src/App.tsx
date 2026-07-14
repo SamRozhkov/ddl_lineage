@@ -8,7 +8,9 @@ import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
 import {AbbrSql, Moon, Sun} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
 import {Button, Icon, Theme, ThemeProvider} from '@gravity-ui/uikit';
+import Editor from '@monaco-editor/react';
 import React from 'react';
+import {format as formatSql} from 'sql-formatter';
 
 type DDLObject = {
     name: string;
@@ -166,6 +168,15 @@ export const App = () => {
         }
     };
 
+    const formatDdl = () => {
+        try {
+            setDdl(formatSql(ddl, {language: 'postgresql'}));
+            setError('');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Unable to format SQL');
+        }
+    };
+
     return (
         <ThemeProvider theme={theme}>
             <AsideHeader
@@ -218,16 +229,34 @@ export const App = () => {
                             <div className="editor-pane">
                                 <div className="pane-header">
                                     <h2>DDL</h2>
-                                    <button type="button" onClick={analyze} disabled={loading || !ddl.trim()}>
-                                        {loading ? 'Analyzing...' : 'Analyze'}
-                                    </button>
+                                    <div className="editor-actions">
+                                        <button type="button" onClick={formatDdl} disabled={!ddl.trim()}>
+                                            Format SQL
+                                        </button>
+                                        <button type="button" onClick={analyze} disabled={loading || !ddl.trim()}>
+                                            {loading ? 'Analyzing...' : 'Analyze'}
+                                        </button>
+                                    </div>
                                 </div>
-                                <textarea
-                                    value={ddl}
-                                    onChange={(event) => setDdl(event.target.value)}
-                                    spellCheck={false}
-                                    aria-label="DDL input"
-                                />
+                                <div className="sql-editor">
+                                    <Editor
+                                        height="100%"
+                                        language="sql"
+                                        theme={isDark ? 'vs-dark' : 'vs'}
+                                        value={ddl}
+                                        onChange={(value) => setDdl(value || '')}
+                                        options={{
+                                            automaticLayout: true,
+                                            minimap: {enabled: false},
+                                            fontFamily: 'SFMono-Regular, Consolas, monospace',
+                                            fontSize: 13,
+                                            lineHeight: 20,
+                                            scrollBeyondLastLine: false,
+                                            tabSize: 4,
+                                            wordWrap: 'on',
+                                        }}
+                                    />
+                                </div>
                                 {error && <div className="error">{error}</div>}
                             </div>
 

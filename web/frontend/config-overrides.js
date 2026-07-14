@@ -1,6 +1,13 @@
 module.exports = function override(config /*, env*/) {
     return {
         ...config,
+        ignoreWarnings: [
+            ...(config.ignoreWarnings || []),
+            {
+                module: /node_modules\/sql-formatter/,
+                message: /Failed to parse source map/,
+            },
+        ],
         resolve: {
             ...config.resolve,
             plugins: (config.resolve.plugins || []).filter(

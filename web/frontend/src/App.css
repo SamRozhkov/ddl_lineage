@@ -59,7 +59,6 @@ body {
 
 input,
 select,
-textarea,
 .pane-header button {
     font: inherit;
 }
@@ -118,24 +117,32 @@ select {
     margin-bottom: 12px;
 }
 
+.editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .pane-header h2,
 .panel h2 {
     font-size: 16px;
     line-height: 24px;
 }
 
-textarea {
+.sql-editor {
     width: 100%;
-    min-height: calc(100vh - 220px);
-    resize: vertical;
+    height: calc(100vh - 220px);
+    min-height: 420px;
+    overflow: hidden;
     border: 1px solid var(--g-color-line-generic);
     border-radius: 6px;
-    padding: 12px;
-    color: var(--g-color-text-primary);
     background: var(--g-color-base-background);
-    font-family: 'SFMono-Regular', Consolas, monospace;
-    font-size: 13px;
-    line-height: 20px;
+}
+
+.sql-editor .monaco-editor,
+.sql-editor .overflow-guard {
+    border-radius: 6px;
 }
 
 .error {
@@ -398,7 +405,7 @@ pre {
         min-height: auto;
     }
 
-    textarea {
+    .sql-editor {
         min-height: 360px;
     }
 
