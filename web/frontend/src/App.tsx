@@ -99,6 +99,7 @@ export const App = () => {
     const [loading, setLoading] = React.useState(false);
     const [projects, setProjects] = React.useState<ProjectSummary[]>([]);
     const [projectName, setProjectName] = React.useState('');
+    const [isMermaidOpen, setIsMermaidOpen] = React.useState(false);
     const isDark = theme === 'dark';
 
     const loadProjects = React.useCallback(async () => {
@@ -343,8 +344,17 @@ export const App = () => {
                                 </section>
 
                                 <section className="panel">
-                                    <h2>Mermaid Source</h2>
-                                    <pre>{mermaid || 'graph LR'}</pre>
+                                    <div className="collapsible-header">
+                                        <h2>Mermaid Source</h2>
+                                        <button
+                                            type="button"
+                                            aria-expanded={isMermaidOpen}
+                                            onClick={() => setIsMermaidOpen((open) => !open)}
+                                        >
+                                            {isMermaidOpen ? 'Hide' : 'Show'}
+                                        </button>
+                                    </div>
+                                    {isMermaidOpen && <pre>{mermaid || 'graph LR'}</pre>}
                                 </section>
                             </div>
                         </section>

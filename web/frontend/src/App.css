@@ -269,6 +269,25 @@ th {
     line-height: 22px;
 }
 
+.collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.collapsible-header button {
+    height: 28px;
+    border: 1px solid var(--g-color-line-generic);
+    border-radius: 6px;
+    padding: 0 10px;
+    color: var(--g-color-text-primary);
+    background: var(--g-color-base-background);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+}
+
 pre {
     overflow: auto;
     margin: 12px 0 0;
