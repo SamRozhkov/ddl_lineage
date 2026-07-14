@@ -1,6 +1,51 @@
 :root {
+    --lineage-edge-fk-bg: #eceff3;
+    --lineage-edge-fk-text: #394150;
+    --lineage-edge-read-bg: #dff0ff;
+    --lineage-edge-read-text: #084b83;
+    --lineage-edge-write-bg: #ffe8dc;
+    --lineage-edge-write-text: #7a2e13;
+    --lineage-edge-inherits-bg: #e5f5da;
+    --lineage-edge-inherits-text: #2f5d16;
+    --lineage-type-table-bg: #dff0ff;
+    --lineage-type-table-text: #084b83;
+    --lineage-type-view-bg: #ddf4eb;
+    --lineage-type-view-text: #0f5c49;
+    --lineage-type-function-bg: #faeeda;
+    --lineage-type-function-text: #633806;
+    --lineage-tooltip-bg: var(--g-color-base-float);
+    --lineage-tooltip-border: var(--g-color-line-generic);
+    --lineage-tooltip-text: var(--g-color-text-primary);
+    --lineage-tooltip-muted: var(--g-color-text-secondary);
+    --lineage-tooltip-divider: var(--g-color-line-generic);
+    --lineage-node-shadow: rgba(31, 36, 48, 0.08);
+    --lineage-node-shadow-hover: rgba(31, 36, 48, 0.16);
     color: var(--g-color-text-primary);
     background: var(--g-color-base-background);
+}
+
+.g-root_theme_dark {
+    --lineage-edge-fk-bg: #343b47;
+    --lineage-edge-fk-text: #d0d5dd;
+    --lineage-edge-read-bg: #11395f;
+    --lineage-edge-read-text: #a8d2ff;
+    --lineage-edge-write-bg: #5a2f1e;
+    --lineage-edge-write-text: #ffb88a;
+    --lineage-edge-inherits-bg: #2f4625;
+    --lineage-edge-inherits-text: #b7e48e;
+    --lineage-type-table-bg: #11395f;
+    --lineage-type-table-text: #a8d2ff;
+    --lineage-type-view-bg: #173d34;
+    --lineage-type-view-text: #9ce3cb;
+    --lineage-type-function-bg: #4a341b;
+    --lineage-type-function-text: #ffd08a;
+    --lineage-tooltip-bg: #1f2430;
+    --lineage-tooltip-border: #3c4554;
+    --lineage-tooltip-text: #fff;
+    --lineage-tooltip-muted: rgba(255, 255, 255, 0.72);
+    --lineage-tooltip-divider: rgba(255, 255, 255, 0.14);
+    --lineage-node-shadow: rgba(0, 0, 0, 0.22);
+    --lineage-node-shadow-hover: rgba(0, 0, 0, 0.34);
 }
 
 * {
@@ -244,23 +289,23 @@ th {
 }
 
 .edge-fk {
-    color: #394150;
-    background: #eceff3;
+    color: var(--lineage-edge-fk-text);
+    background: var(--lineage-edge-fk-bg);
 }
 
 .edge-read {
-    color: #084b83;
-    background: #dff0ff;
+    color: var(--lineage-edge-read-text);
+    background: var(--lineage-edge-read-bg);
 }
 
 .edge-write {
-    color: #7a2e13;
-    background: #ffe8dc;
+    color: var(--lineage-edge-write-text);
+    background: var(--lineage-edge-write-bg);
 }
 
 .edge-inherits {
-    color: #2f5d16;
-    background: #e5f5da;
+    color: var(--lineage-edge-inherits-text);
+    background: var(--lineage-edge-inherits-bg);
 }
 
 .order-line {
@@ -397,7 +442,7 @@ pre {
     border-radius: 8px;
     padding: 10px;
     background: var(--g-color-base-background);
-    box-shadow: 0 6px 18px rgba(31, 36, 48, 0.08);
+    box-shadow: 0 6px 18px var(--lineage-node-shadow);
 }
 
 .lineage-node__tooltip {
@@ -409,12 +454,12 @@ pre {
     min-width: 220px;
     max-width: 320px;
     gap: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid var(--lineage-tooltip-border);
     border-radius: 6px;
     padding: 8px 10px;
-    color: #fff;
-    background: rgba(31, 36, 48, 0.96);
-    box-shadow: 0 10px 28px rgba(31, 36, 48, 0.22);
+    color: var(--lineage-tooltip-text);
+    background: var(--lineage-tooltip-bg);
+    box-shadow: 0 10px 28px var(--lineage-node-shadow-hover);
     font-size: 12px;
     line-height: 16px;
     opacity: 0;
@@ -436,7 +481,7 @@ pre {
 }
 
 .lineage-node__tooltip-header span {
-    color: rgba(255, 255, 255, 0.72);
+    color: var(--lineage-tooltip-muted);
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
@@ -445,7 +490,7 @@ pre {
 .lineage-node__tooltip-fields {
     display: grid;
     gap: 4px;
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    border-top: 1px solid var(--lineage-tooltip-divider);
     padding-top: 8px;
 }
 
@@ -465,14 +510,14 @@ pre {
 
 .lineage-node__tooltip-field code {
     max-width: 120px;
-    color: rgba(255, 255, 255, 0.68);
+    color: var(--lineage-tooltip-muted);
     font-family: 'SFMono-Regular', Consolas, monospace;
     font-size: 11px;
 }
 
 .lineage-node__tooltip-empty,
 .lineage-node__tooltip-more {
-    color: rgba(255, 255, 255, 0.64);
+    color: var(--lineage-tooltip-muted);
     font-size: 11px;
     line-height: 16px;
 }
@@ -491,7 +536,7 @@ pre {
 .lineage-node--temporary:hover,
 .lineage-node--temporary:focus-within {
     opacity: 1;
-    box-shadow: 0 8px 24px rgba(31, 36, 48, 0.16);
+    box-shadow: 0 8px 24px var(--lineage-node-shadow-hover);
 }
 
 .lineage-node__type {
@@ -579,20 +624,20 @@ pre {
 }
 
 .type-table {
-    color: #084b83;
-    background: #dff0ff;
+    color: var(--lineage-type-table-text);
+    background: var(--lineage-type-table-bg);
 }
 
 .type-view,
 .type-materialized_view {
-    color: #0f5c49;
-    background: #ddf4eb;
+    color: var(--lineage-type-view-text);
+    background: var(--lineage-type-view-bg);
 }
 
 .type-function,
 .type-procedure {
-    color: #633806;
-    background: #faeeda;
+    color: var(--lineage-type-function-text);
+    background: var(--lineage-type-function-bg);
 }
 
 @media (max-width: 960px) {

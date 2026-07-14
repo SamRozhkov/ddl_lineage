@@ -2,7 +2,7 @@ import '@gravity-ui/uikit/styles/fonts.css';
 import '@gravity-ui/uikit/styles/styles.css';
 import './App.css';
 
-import type {Graph, TBlock, TConnection} from '@gravity-ui/graph';
+import type {Graph, TBlock, TConnection, TGraphColors} from '@gravity-ui/graph';
 import {EAnchorType, ECanDrag, GraphState} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
 import {AbbrSql, ArrowsExpand, ChevronsCollapseUpRight, Moon, Sun} from '@gravity-ui/icons';
@@ -11,72 +11,8 @@ import {Button, Icon, Theme, ThemeProvider} from '@gravity-ui/uikit';
 import Editor from '@monaco-editor/react';
 import React from 'react';
 import {format as formatSql} from 'sql-formatter';
+import {ProjectSummary, AnalysisResult, LineageGraphBlock, DDLObject, AnalyzeResponse} from './types';
 
-type DDLObject = {
-    name: string;
-    type: string;
-    schema: string;
-    temporary?: boolean;
-    columns: Array<{
-        name: string;
-        type: string;
-        nullable: boolean;
-        pk: boolean;
-        fk_to: string;
-        unique: boolean;
-        default: string;
-    }>;
-};
-
-type LineageEdge = {
-    source: string;
-    target: string;
-    type: string;
-    via: string;
-    details: string;
-};
-
-type AnalysisResult = {
-    objects: DDLObject[];
-    edges: LineageEdge[];
-    cycles: string[][];
-    topo_order: string[];
-    stats: {
-        total_objects: number;
-        total_edges: number;
-        has_cycles: boolean;
-    };
-};
-
-type AnalyzeResponse = {
-    success: boolean;
-    data?: AnalysisResult;
-    mermaid?: string;
-    error?: string | null;
-};
-
-type ProjectSummary = {
-    project_name: string;
-    display_name: string;
-    description: string;
-    updated_at: string;
-    has_state: boolean;
-};
-
-type GraphFieldMeta = {
-    name: string;
-    type: string;
-};
-
-type GraphBlockMeta = {
-    objectType: string;
-    schema: string;
-    columns: number;
-    fields: GraphFieldMeta[];
-    temporary: boolean;
-};
-
-type LineageGraphBlock = TBlock<GraphBlockMeta>;
 
 const sampleDDL = `CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -346,7 +282,7 @@ export const App = () => {
 
                                 <section className="panel">
                                     <h2>Graph</h2>
-                                    <LineageGraph result={result} />
+                                    <LineageGraph result={result} isDark={isDark} />
                                 </section>
 
                                 <section className="panel">
@@ -386,7 +322,7 @@ const EmptyRow = ({colSpan}: {colSpan: number}) => (
     </tr>
 );
 
-const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
+const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: boolean}) => {
     const graphContainerRef = React.useRef<HTMLDivElement | null>(null);
     const [isFullscreen, setIsFullscreen] = React.useState(false);
     const graphConfig = React.useMemo(
@@ -407,7 +343,11 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
     );
     const {graph, setEntities, start} = useGraph(graphConfig);
 
-    const graphEntities = React.useMemo(() => buildGraphEntities(result), [result]);
+    React.useEffect(() => {
+        graph.setColors(graphThemeColors(isDark));
+    }, [graph, isDark]);
+
+    const graphEntities = React.useMemo(() => buildGraphEntities(result, isDark), [isDark, result]);
     const blockIds = React.useMemo(
         () => graphEntities.blocks.map((block) => block.id),
         [graphEntities.blocks],
@@ -545,7 +485,7 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
     );
 };
 
-function buildGraphEntities(result: AnalysisResult | null): {
+function buildGraphEntities(result: AnalysisResult | null, isDark: boolean): {
     blocks: LineageGraphBlock[];
     connections: TConnection[];
 } {
@@ -609,7 +549,7 @@ function buildGraphEntities(result: AnalysisResult | null): {
             targetBlockId: edge.source,
             targetAnchorId: `${edge.source}-in`,
             label: edge.details ? `${edge.type} ${edge.details}` : edge.type,
-            styles: edgeStyles(edge.type),
+            styles: edgeStyles(edge.type, isDark),
         }));
 
     return {blocks, connections};
@@ -693,18 +633,100 @@ function computeLevels(result: AnalysisResult): Map<string, number> {
     return levels;
 }
 
-function edgeStyles(type: string): TConnection['styles'] {
+function edgeStyles(type: string, isDark: boolean): TConnection['styles'] {
     if (type === 'WRITE') {
-        return {background: '#b54708', selectedBackground: '#93370d'};
+        return isDark
+            ? {background: '#ff9d66', selectedBackground: '#ffb88a'}
+            : {background: '#b54708', selectedBackground: '#93370d'};
     }
 
     if (type === 'READ') {
-        return {background: '#0b65d8', selectedBackground: '#084b83'};
+        return isDark
+            ? {background: '#72b5ff', selectedBackground: '#a8d2ff'}
+            : {background: '#0b65d8', selectedBackground: '#084b83'};
     }
 
     if (type === 'INHERITS') {
-        return {background: '#3f7b1f', selectedBackground: '#2f5d16', dashes: [8, 6]};
+        return isDark
+            ? {background: '#9bd36a', selectedBackground: '#b7e48e', dashes: [8, 6]}
+            : {background: '#3f7b1f', selectedBackground: '#2f5d16', dashes: [8, 6]};
     }
 
-    return {background: '#626a76', selectedBackground: '#394150', dashes: [6, 5]};
+    return isDark
+        ? {background: '#b3bac6', selectedBackground: '#d0d5dd', dashes: [6, 5]}
+        : {background: '#626a76', selectedBackground: '#394150', dashes: [6, 5]};
+}
+
+function graphThemeColors(isDark: boolean): TGraphColors {
+    if (isDark) {
+        return {
+            canvas: {
+                belowLayerBackground: '#111827',
+                layerBackground: '#111827',
+                dots: '#334155',
+                border: '#334155',
+            },
+            block: {
+                background: '#1f2937',
+                border: '#475569',
+                text: '#f8fafc',
+                selectedBorder: '#72b5ff',
+            },
+            anchor: {
+                background: '#94a3b8',
+                selectedBorder: '#72b5ff',
+            },
+            connection: {
+                background: '#94a3b8',
+                selectedBackground: '#d0d5dd',
+            },
+            connectionLabel: {
+                background: '#1f2937',
+                hoverBackground: '#334155',
+                selectedBackground: '#0f3b66',
+                text: '#e5e7eb',
+                hoverText: '#ffffff',
+                selectedText: '#ffffff',
+            },
+            selection: {
+                background: 'rgba(114, 181, 255, 0.18)',
+                border: '#72b5ff',
+            },
+        };
+    }
+
+    return {
+        canvas: {
+            belowLayerBackground: '#f4f6f8',
+            layerBackground: '#f4f6f8',
+            dots: '#d8dee8',
+            border: '#d8dee8',
+        },
+        block: {
+            background: '#ffffff',
+            border: '#d8dee8',
+            text: '#1f2937',
+            selectedBorder: '#0b65d8',
+        },
+        anchor: {
+            background: '#7b8794',
+            selectedBorder: '#0b65d8',
+        },
+        connection: {
+            background: '#626a76',
+            selectedBackground: '#394150',
+        },
+        connectionLabel: {
+            background: '#ffffff',
+            hoverBackground: '#f4f6f8',
+            selectedBackground: '#dff0ff',
+            text: '#394150',
+            hoverText: '#1f2937',
+            selectedText: '#084b83',
+        },
+        selection: {
+            background: 'rgba(11, 101, 216, 0.12)',
+            border: '#0b65d8',
+        },
+    };
 }
