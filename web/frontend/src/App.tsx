@@ -63,10 +63,16 @@ type ProjectSummary = {
     has_state: boolean;
 };
 
+type GraphFieldMeta = {
+    name: string;
+    type: string;
+};
+
 type GraphBlockMeta = {
     objectType: string;
     schema: string;
     columns: number;
+    fields: GraphFieldMeta[];
     temporary: boolean;
 };
 
@@ -448,6 +454,11 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
     const renderBlock = React.useCallback((currentGraph: Graph, block: TBlock) => {
         const typedBlock = block as LineageGraphBlock;
         const meta = typedBlock.meta;
+        const displayName = meta?.schema ? `${meta.schema}.${typedBlock.name}` : typedBlock.name;
+        const objectType = meta?.objectType || 'OBJECT';
+        const fields = meta?.fields || [];
+        const visibleFields = fields.slice(0, 8);
+        const hiddenFieldCount = Math.max(0, fields.length - visibleFields.length);
 
         return (
             <GraphBlock
@@ -455,8 +466,29 @@ const LineageGraph = ({result}: {result: AnalysisResult | null}) => {
                 block={typedBlock}
                 className={`lineage-node${meta?.temporary ? ' lineage-node--temporary' : ''}`}
             >
+                <div className="lineage-node__tooltip" role="tooltip">
+                    <div className="lineage-node__tooltip-header">
+                        <strong>{displayName}</strong>
+                        <span>{objectType}</span>
+                    </div>
+                    <div className="lineage-node__tooltip-fields">
+                        {visibleFields.length ? (
+                            visibleFields.map((field) => (
+                                <div key={`${typedBlock.id}-${field.name}`} className="lineage-node__tooltip-field">
+                                    <span>{field.name}</span>
+                                    <code>{field.type || 'unknown'}</code>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="lineage-node__tooltip-empty">No fields detected</div>
+                        )}
+                        {hiddenFieldCount > 0 && (
+                            <div className="lineage-node__tooltip-more">+{hiddenFieldCount} more fields</div>
+                        )}
+                    </div>
+                </div>
                 <div className={`lineage-node__type type-${meta?.objectType.toLowerCase()}`}>
-                    {meta?.objectType || 'OBJECT'}
+                    {objectType}
                 </div>
                 {meta?.temporary && <div className="lineage-node__temp">TEMP</div>}
                 <div className="lineage-node__name">{typedBlock.name}</div>
@@ -558,6 +590,10 @@ function buildGraphEntities(result: AnalysisResult | null): {
                 objectType: object.type,
                 schema: object.schema,
                 columns: object.columns.length,
+                fields: object.columns.map((column) => ({
+                    name: column.name,
+                    type: column.type,
+                })),
                 temporary: Boolean(object.temporary),
             },
         };

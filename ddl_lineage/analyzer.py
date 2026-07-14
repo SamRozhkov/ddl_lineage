@@ -15,6 +15,7 @@ from .parser import (
     _cte_names,
     _extract_function_body,
     _extract_object_name,
+    _extract_select_list,
     _extract_table_definition_body,
     _parse_ctas_columns,
     _parse_column_lineage,
@@ -23,6 +24,8 @@ from .parser import (
     _parse_table_columns,
     _read_references,
     _remove_comments,
+    _select_expression_name,
+    _split_top_level_csv,
     _split_statements,
 )
 from .graph import detect_cycles, impact_analysis, topological_sort, ImpactResult
@@ -171,7 +174,7 @@ class DDLLineageAnalyzer:
             return
 
         body = _extract_table_definition_body(stmt)
-        columns = _parse_table_columns(_remove_comments(body)) if body else _parse_ctas_columns(stmt)
+        columns = _parse_table_columns(_remove_comments(body)) if body else self._parse_derived_columns(stmt)
         temporary = bool(_CREATE_TEMP_TABLE_RE.match(stmt))
         self.objects[name] = DDLObject(
             name=name, type="TABLE", schema=schema,
@@ -216,7 +219,7 @@ class DDLLineageAnalyzer:
         body = body_m.group(1) if body_m else ""
         self.objects[name] = DDLObject(
             name=name, type=obj_type, schema=schema,
-            columns=_parse_select_columns(body), raw=stmt[:100],
+            columns=self._parse_derived_columns(body), raw=stmt[:100],
         )
         if body_m:
             ctes = _cte_names(body)
@@ -259,6 +262,111 @@ class DDLLineageAnalyzer:
                     source=name, target=t, edge_type="WRITE",
                     via=name, details=detail, col_lineage=col_lin,
                 ))
+
+    def _parse_derived_columns(self, stmt: str) -> list[Column]:
+        select_list = _extract_select_list(stmt)
+        if not select_list:
+            return _parse_ctas_columns(stmt) or _parse_select_columns(stmt)
+
+        sources = self._select_sources(stmt)
+        columns: list[Column] = []
+        used_names: set[str] = set()
+
+        for index, expr in enumerate(_split_top_level_csv(select_list), start=1):
+            source_expr = self._select_source_expression(expr)
+            expanded = self._expand_wildcard_columns(source_expr, sources)
+            if expanded:
+                for source_col in expanded:
+                    name = self._unique_column_name(source_col.name, used_names, len(columns) + 1)
+                    columns.append(Column(name=name, data_type=source_col.data_type))
+                continue
+
+            name = self._unique_column_name(_select_expression_name(expr, index), used_names, index)
+            columns.append(Column(
+                name=name,
+                data_type=self._select_expression_type(source_expr, sources),
+            ))
+
+        return columns
+
+    def _select_sources(self, stmt: str) -> dict[str, str]:
+        sources: dict[str, str] = {}
+        for m in re.finditer(
+            r"\b(?:FROM|JOIN)\s+(?:`?\"?\w+\"?`?\.)?`?\"?(\w+)\"?`?"
+            r"(?:\s+(?:AS\s+)?`?\"?(\w+)\"?`?)?",
+            stmt,
+            re.IGNORECASE,
+        ):
+            table = m.group(1).lower()
+            alias = (m.group(2) or "").lower()
+            sources[table] = table
+            if alias and alias.upper() not in SQL_KW:
+                sources[alias] = table
+        return sources
+
+    def _select_source_expression(self, expr: str) -> str:
+        expr = expr.strip().rstrip(";")
+        alias_m = re.search(r"\bAS\s+`?\"?\w+\"?`?$", expr, re.IGNORECASE)
+        if alias_m:
+            return expr[: alias_m.start()].strip()
+
+        trailing_alias_m = re.search(r"\s+`?\"?(\w+)\"?`?$", expr)
+        if trailing_alias_m:
+            alias = trailing_alias_m.group(1)
+            prefix = expr[: trailing_alias_m.start()].strip()
+            if prefix and alias.upper() not in SQL_KW and not re.search(r"[()+*/-]", alias):
+                return prefix
+
+        return expr
+
+    def _expand_wildcard_columns(self, expr: str, sources: dict[str, str]) -> list[Column]:
+        expr = expr.strip()
+        if expr == "*":
+            result: list[Column] = []
+            for table in dict.fromkeys(sources.values()):
+                result.extend(self.objects.get(table, DDLObject(table, "TABLE")).columns)
+            return result
+
+        m = re.match(r"`?\"?(\w+)\"?`?\.\*$", expr)
+        if not m:
+            return []
+
+        table = sources.get(m.group(1).lower(), m.group(1).lower())
+        return list(self.objects.get(table, DDLObject(table, "TABLE")).columns)
+
+    def _select_expression_type(self, expr: str, sources: dict[str, str]) -> str:
+        qualified_m = re.match(r"(?:`?\"?(\w+)\"?`?\.)?`?\"?(\w+)\"?`?$", expr.strip())
+        if not qualified_m:
+            return ""
+
+        qualifier = (qualified_m.group(1) or "").lower()
+        column_name = qualified_m.group(2).lower()
+        if qualifier:
+            return self._source_column_type(sources.get(qualifier, qualifier), column_name)
+
+        matches = {
+            self._source_column_type(table, column_name)
+            for table in dict.fromkeys(sources.values())
+            if self._source_column_type(table, column_name)
+        }
+        return next(iter(matches)) if len(matches) == 1 else ""
+
+    def _source_column_type(self, table: str, column_name: str) -> str:
+        obj = self.objects.get(table)
+        if not obj:
+            return ""
+
+        for column in obj.columns:
+            if column.name == column_name:
+                return column.data_type
+        return ""
+
+    def _unique_column_name(self, name: str, used_names: set[str], index: int) -> str:
+        unique = name or f"column_{index}"
+        if unique in used_names:
+            unique = f"{unique}_{index}"
+        used_names.add(unique)
+        return unique
 
     def _columns_from_returns_setof(self, stmt: str) -> list[Column]:
         m = re.search(
