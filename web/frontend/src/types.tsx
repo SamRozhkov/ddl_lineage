@@ -43,6 +43,16 @@ export type AnalyzeResponse = {
     error?: string | null;
 };
 
+export type ProjectHistoryEntry = {
+    id: number;
+    timestamp: string;
+    action: string;
+    summary: {
+        total_objects?: number;
+        total_edges?: number;
+    };
+};
+
 export type ProjectSummary = {
     project_name: string;
     display_name: string;
@@ -65,3 +75,25 @@ export type GraphBlockMeta = {
 };
 
 export type LineageGraphBlock = TBlock<GraphBlockMeta>;
+
+export type SavedConnection = {
+    id: string;
+    name: string;
+    type: 'postgresql' | 'mysql';
+    host: string;
+    port: string;
+    database: string;
+    schema: string;
+    username: string;
+};
+
+export type ConnectFormData = {
+    name: string;
+    type: string;
+    host: string;
+    port: string;
+    database: string;
+    schema: string;
+    username: string;
+    password: string;
+};

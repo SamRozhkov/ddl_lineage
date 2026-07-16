@@ -166,6 +166,21 @@ class ProjectStore:
         state_json = json.dumps(state_to_save, default=str)
 
         with self.engine.begin() as conn:
+            # For analysis actions: only add history entry if DDL changed
+            add_history = True
+            if action == 'analysis':
+                last = conn.execute(
+                    select(self.project_history)
+                    .where(self.project_history.c.project_name == sanitized)
+                    .where(self.project_history.c.action == 'analysis')
+                    .order_by(self.project_history.c.id.desc())
+                    .limit(1)
+                ).first()
+                if last is not None:
+                    last_state = json.loads(last.state_json)
+                    if last_state.get('ddl', '') == state.get('ddl', ''):
+                        add_history = False
+
             conn.execute(self.project_state.delete().where(self.project_state.c.project_name == sanitized))
             conn.execute(
                 self.project_state.insert().values(
@@ -173,14 +188,15 @@ class ProjectStore:
                     state_json=state_json,
                 )
             )
-            conn.execute(
-                self.project_history.insert().values(
-                    project_name=sanitized,
-                    timestamp=now,
-                    action=action,
-                    state_json=state_json,
+            if add_history:
+                conn.execute(
+                    self.project_history.insert().values(
+                        project_name=sanitized,
+                        timestamp=now,
+                        action=action,
+                        state_json=state_json,
+                    )
                 )
-            )
             conn.execute(
                 self.projects.update()
                 .where(self.projects.c.project_name == sanitized)
@@ -198,6 +214,19 @@ class ProjectStore:
             return {}
         return json.loads(row.state_json)
 
+    def delete_project(self, name: str) -> None:
+        sanitized = self.sanitize_name(name)
+        with self.engine.begin() as conn:
+            conn.execute(
+                self.project_history.delete().where(self.project_history.c.project_name == sanitized)
+            )
+            conn.execute(
+                self.project_state.delete().where(self.project_state.c.project_name == sanitized)
+            )
+            conn.execute(
+                self.projects.delete().where(self.projects.c.project_name == sanitized)
+            )
+
     def list_history(self, name: str) -> list[dict]:
         sanitized = self.sanitize_name(name)
         query = (
@@ -213,10 +242,22 @@ class ProjectStore:
             analysis = state.get('analysis') or {}
             history.append(
                 {
+                    'id': row.id,
                     'timestamp': row.timestamp,
                     'action': row.action,
                     'summary': analysis.get('stats', {}),
-                    'filename': None,
                 }
             )
         return history
+
+    def load_history_entry(self, name: str, entry_id: int) -> dict:
+        sanitized = self.sanitize_name(name)
+        query = select(self.project_history).where(
+            (self.project_history.c.project_name == sanitized)
+            & (self.project_history.c.id == entry_id)
+        )
+        with self.engine.begin() as conn:
+            row = conn.execute(query).first()
+        if row is None:
+            return {}
+        return json.loads(row.state_json)

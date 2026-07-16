@@ -1,13 +1,36 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">DDL Lineage Analyzer</title>
-  <desc id="desc">A simplified database table connected to lineage nodes.</desc>
-  <path d="M16 17C16 13.6863 23.1634 11 32 11C40.8366 11 48 13.6863 48 17V31C48 34.3137 40.8366 37 32 37C23.1634 37 16 34.3137 16 31V17Z" fill="#0B65D8"/>
-  <path d="M16 17C16 20.3137 23.1634 23 32 23C40.8366 23 48 20.3137 48 17" stroke="#DFF0FF" stroke-width="4" stroke-linecap="round"/>
-  <path d="M16 30C16 33.3137 23.1634 36 32 36C40.8366 36 48 33.3137 48 30" stroke="#72B5FF" stroke-width="4" stroke-linecap="round"/>
-  <path d="M32 37V45" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
-  <path d="M32 45H21" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
-  <path d="M32 45H43" stroke="#7B8794" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="21" cy="51" r="6" fill="#9BD36A" stroke="#2F5D16" stroke-width="3"/>
-  <circle cx="43" cy="51" r="6" fill="#FF9D66" stroke="#7A2E13" stroke-width="3"/>
-  <circle cx="32" cy="45" r="5" fill="#FFFFFF" stroke="#0B65D8" stroke-width="3"/>
+
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">DDL Lineage Analyzer icon</title>
+  <desc id="desc">Иконка базы данных, соединённой с узлами линии происхождения данных, вписанная в 24x24</desc>
+  <defs>
+    <linearGradient id="dbTop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B8CFF"/>
+      <stop offset="1" stop-color="#0B5CD8"/>
+    </linearGradient>
+    <linearGradient id="dbBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E76F0"/>
+      <stop offset="1" stop-color="#0A4FB8"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#B7E68C"/>
+      <stop offset="1" stop-color="#6FAE3F"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFC08A"/>
+      <stop offset="1" stop-color="#F0813F"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(-3.303,-4.261) scale(0.4783)">
+    <path d="M16 17C16 13.6863 23.1634 11 32 11C40.8366 11 48 13.6863 48 17V31C48 34.3137 40.8366 37 32 37C23.1634 37 16 34.3137 16 31V17Z" fill="url(#dbBody)"/>
+    <path d="M16 17C16 20.3137 23.1634 23 32 23C40.8366 23 48 20.3137 48 17C48 13.6863 40.8366 11 32 11C23.1634 11 16 13.6863 16 17Z" fill="url(#dbTop)"/>
+    <path d="M16 17C16 20.3137 23.1634 23 32 23C40.8366 23 48 20.3137 48 17" stroke="#DFF0FF" stroke-width="1.6" stroke-linecap="round" opacity="0.85"/>
+    <path d="M16 24C16 27.3137 23.1634 30 32 30C40.8366 30 48 27.3137 48 24" stroke="#5FA6FF" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M16 30C16 33.3137 23.1634 36 32 36C40.8366 36 48 33.3137 48 30" stroke="#8CC3FF" stroke-width="1.6" stroke-linecap="round" opacity="0.7"/>
+    <path d="M32 37V45" stroke="#8A97A6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M32 45H21" stroke="#8A97A6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M32 45H43" stroke="#8A97A6" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="21" cy="51" r="6" fill="url(#green)" stroke="#3E7A22" stroke-width="1.4"/>
+    <circle cx="43" cy="51" r="6" fill="url(#orange)" stroke="#A6491D" stroke-width="1.4"/>
+    <circle cx="32" cy="45" r="5" fill="#FFFFFF" stroke="#1E76F0" stroke-width="1.6"/>
+  </g>
 </svg>

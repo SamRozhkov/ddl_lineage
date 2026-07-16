@@ -39,7 +39,7 @@ def add_cors_headers(response):
     origin = request.headers.get('Origin')
     if origin in allowed_origins:
         response.headers['Access-Control-Allow-Origin'] = origin
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return response
@@ -94,10 +94,17 @@ def manage_projects():
     }), 201
 
 
-@app.route('/api/project/<project_name>', methods=['GET', 'POST', 'OPTIONS'])
+@app.route('/api/project/<project_name>', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
 def project_state(project_name):
     if request.method == 'OPTIONS':
         return '', 200
+
+    if request.method == 'DELETE':
+        try:
+            project_store.delete_project(project_name)
+            return jsonify({'success': True, 'projects': project_store.list_projects()}), 200
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     if request.method == 'GET':
         if not project_store.project_exists(project_name):
@@ -128,6 +135,21 @@ def project_history(project_name):
         'success': True,
         'history': project_store.list_history(project_name)
     }), 200
+
+
+@app.route('/api/project/<project_name>/history/<int:entry_id>', methods=['GET', 'OPTIONS'])
+def project_history_entry(project_name, entry_id):
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if not project_store.project_exists(project_name):
+        return jsonify({'success': False, 'error': 'Project not found'}), 404
+
+    state = project_store.load_history_entry(project_name, entry_id)
+    if not state:
+        return jsonify({'success': False, 'error': 'History entry not found'}), 404
+
+    return jsonify({'success': True, 'project': state}), 200
 
 
 @app.route('/api/analyze', methods=['POST', 'OPTIONS'])
@@ -184,6 +206,7 @@ def analyze():
                     'objects': result['objects'],
                     'edges': result['edges'],
                     'cycles': result['cycles'],
+                    'topo_order': result.get('topo_order', []),
                     'stats': result['stats'],
                 },
                 'mermaid': _to_mermaid(result),
