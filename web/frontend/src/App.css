@@ -1,4 +1,24 @@
 :root {
+    --font-sans: 'IBM Plex Sans', Inter, Arial, sans-serif;
+    --font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+    /* Blueprint palette — app chrome flips with theme, "-fixed" tokens never do */
+    --paper: #f5f6f2;
+    --paper-fixed: #f5f6f2;
+    --ink: #10182b;
+    --ink-fixed: #10182b;
+    --blueprint-900: #0e2a52;
+    --blueprint-800: #123a6e;
+    --blueprint-500: #2e6fd6;
+    --trace-cyan: #6fe0e0;
+    --signal-amber: #c2760c;
+    --signal-green: #1e9e6c;
+
+    /* Fixed type colors for graph nodes (cards are always paper-fixed) */
+    --graph-type-table: #0b4a8a;
+    --graph-type-view: #0f6b52;
+    --graph-type-function: #7a4b06;
+
     --lineage-edge-fk-bg: #eceff3;
     --lineage-edge-fk-text: #394150;
     --lineage-edge-read-bg: #dff0ff;
@@ -13,18 +33,21 @@
     --lineage-type-view-text: #0f5c49;
     --lineage-type-function-bg: #faeeda;
     --lineage-type-function-text: #633806;
-    --lineage-tooltip-bg: var(--g-color-base-float);
-    --lineage-tooltip-border: var(--g-color-line-generic);
-    --lineage-tooltip-text: var(--g-color-text-primary);
-    --lineage-tooltip-muted: var(--g-color-text-secondary);
-    --lineage-tooltip-divider: var(--g-color-line-generic);
-    --lineage-node-shadow: rgba(31, 36, 48, 0.08);
-    --lineage-node-shadow-hover: rgba(31, 36, 48, 0.16);
+    --lineage-tooltip-bg: #101a30;
+    --lineage-tooltip-border: rgba(111, 224, 224, 0.3);
+    --lineage-tooltip-text: #f5f6f2;
+    --lineage-tooltip-muted: rgba(245, 246, 242, 0.7);
+    --lineage-tooltip-divider: rgba(111, 224, 224, 0.2);
+    --lineage-node-shadow: rgba(14, 42, 82, 0.24);
+    --lineage-node-shadow-hover: rgba(14, 42, 82, 0.36);
     color: var(--g-color-text-primary);
-    background: var(--g-color-base-background);
+    background: var(--paper);
 }
 
 .g-root_theme_dark {
+    --paper: #0f1420;
+    --ink: #edeff3;
+
     --lineage-edge-fk-bg: #343b47;
     --lineage-edge-fk-text: #d0d5dd;
     --lineage-edge-read-bg: #11395f;
@@ -39,13 +62,8 @@
     --lineage-type-view-text: #9ce3cb;
     --lineage-type-function-bg: #4a341b;
     --lineage-type-function-text: #ffd08a;
-    --lineage-tooltip-bg: #1f2430;
-    --lineage-tooltip-border: #3c4554;
-    --lineage-tooltip-text: #fff;
-    --lineage-tooltip-muted: rgba(255, 255, 255, 0.72);
-    --lineage-tooltip-divider: rgba(255, 255, 255, 0.14);
-    --lineage-node-shadow: rgba(0, 0, 0, 0.22);
-    --lineage-node-shadow-hover: rgba(0, 0, 0, 0.34);
+    --lineage-node-shadow: rgba(0, 0, 0, 0.32);
+    --lineage-node-shadow-hover: rgba(0, 0, 0, 0.46);
 }
 
 * {
@@ -54,7 +72,7 @@
 
 body {
     margin: 0;
-    font-family: Inter, Arial, sans-serif;
+    font-family: var(--font-sans);
     color: var(--g-color-text-primary);
     background: var(--g-color-base-background);
 }
@@ -62,7 +80,7 @@ body {
 .app-shell {
     min-height: 100vh;
     padding: 28px;
-    background: var(--g-color-base-generic);
+    background: var(--paper);
 }
 
 .sidebar-footer {
@@ -85,9 +103,10 @@ body {
 }
 
 .topbar h1 {
-    font-size: 24px;
-    line-height: 32px;
-    font-weight: 700;
+    font-family: var(--font-sans);
+    font-size: 18px;
+    line-height: 26px;
+    font-weight: 600;
 }
 
 .topbar-title {
@@ -108,9 +127,10 @@ body {
 }
 
 .topbar-project {
-    font-size: 20px;
+    font-family: var(--font-mono);
+    font-size: 16px;
     font-weight: 500;
-    line-height: 32px;
+    line-height: 26px;
     color: var(--g-color-text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -132,8 +152,8 @@ select,
     border: 0;
     border-radius: 6px;
     padding: 0 16px;
-    color: var(--g-color-text-light-primary);
-    background: var(--g-color-base-brand);
+    color: #fff;
+    background: var(--blueprint-500);
     cursor: pointer;
 }
 
@@ -184,8 +204,7 @@ select,
 }
 
 .editor-pane,
-.panel,
-.metric {
+.panel {
     border: 1px solid var(--g-color-line-generic);
     border-radius: 8px;
     background: var(--g-color-base-background);
@@ -213,9 +232,13 @@ select,
 
 .pane-header h2,
 .panel h2 {
-    font-size: 15px;
-    line-height: 24px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 18px;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--g-color-text-secondary);
     display: flex;
     align-items: center;
 }
@@ -266,72 +289,22 @@ select,
     gap: 16px;
 }
 
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-}
-
-.metric {
-    padding: 14px;
-}
-
-.metric span {
-    display: block;
-    color: var(--g-color-text-secondary);
-    font-size: 12px;
-    line-height: 18px;
-    text-transform: uppercase;
-}
-
-.metric strong {
-    display: block;
-    margin-top: 4px;
-    font-size: 26px;
-    line-height: 32px;
-    animation: metric-in 0.25s ease;
-}
-
-@keyframes metric-in {
-    from {
-        opacity: 0.3;
-        transform: translateY(4px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.metric--danger {
-    background: var(--g-color-base-danger-light);
-    border-color: var(--g-color-line-danger, #f04438);
-}
-
-.metric--danger strong {
-    color: var(--g-color-text-danger);
-}
-
-.metric--success {
-    background: var(--g-color-base-positive-light, #ecfdf3);
-    border-color: var(--g-color-line-positive, #12b76a);
-}
-
-.metric--success strong {
-    color: var(--g-color-text-positive, #027a48);
-}
-
-.g-root_theme_dark .metric--success {
-    background: rgba(18, 183, 106, 0.12);
-    border-color: rgba(50, 213, 131, 0.4);
-}
-
-.g-root_theme_dark .metric--success strong {
-    color: #6ce9a6;
-}
-
 .panel {
     padding: 16px;
+}
+
+.panel--merged {
+    padding: 0;
+}
+
+.panel__block {
+    padding: 16px;
+}
+
+.panel__hr {
+    height: 1px;
+    margin: 0;
+    background: var(--g-color-line-generic);
 }
 
 .table-wrap {
@@ -342,7 +315,8 @@ select,
 table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
 }
 
 th,
@@ -354,8 +328,12 @@ td {
 }
 
 th {
+    font-family: var(--font-sans);
     color: var(--g-color-text-secondary);
     font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
     background: var(--g-color-base-generic);
 }
 
@@ -430,7 +408,8 @@ tbody tr:hover {
     border: 1px solid var(--g-color-line-generic);
     border-radius: 6px;
     padding: 0 10px;
-    font-size: 13px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
     font-weight: 500;
     background: var(--g-color-base-background);
     white-space: nowrap;
@@ -475,7 +454,7 @@ pre {
     padding: 12px;
     color: var(--g-color-text-primary);
     background: var(--g-color-base-generic);
-    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     line-height: 18px;
 }
@@ -483,37 +462,53 @@ pre {
 .lineage-graph {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    height: min(68vh, 720px);
-    min-height: 460px;
+    height: min(74vh, 780px);
+    min-height: 520px;
     overflow: hidden;
     margin-top: 12px;
-    border: 1px solid var(--g-color-line-generic);
+    border: 1px solid var(--blueprint-900);
     border-radius: 8px;
-    background: var(--g-color-base-generic);
+    background: var(--blueprint-900);
 }
 
 .lineage-graph--large {
-    height: min(76vh, 860px);
-    min-height: 560px;
+    height: min(80vh, 900px);
+    min-height: 600px;
 }
 
 .lineage-graph--dense {
-    height: min(84vh, 980px);
-    min-height: 680px;
+    height: min(86vh, 1020px);
+    min-height: 720px;
 }
 
 .lineage-graph__toolbar {
     z-index: 1;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
+    row-gap: 6px;
     gap: 12px;
-    border-bottom: 1px solid var(--g-color-line-generic);
+    border-bottom: 1px solid rgba(111, 224, 224, 0.25);
     padding: 7px 10px;
-    color: var(--g-color-text-secondary);
-    background: var(--g-color-base-background);
+    color: var(--trace-cyan);
+    background: var(--blueprint-800);
     font-size: 12px;
     line-height: 18px;
+}
+
+.lineage-titleblock {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+}
+
+.lineage-titleblock__text {
+    color: var(--trace-cyan);
+}
+
+.lineage-titleblock__text--warn {
+    color: #ffb454;
 }
 
 .lineage-legend {
@@ -521,6 +516,29 @@ pre {
     align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+}
+
+.lineage-graph__toolbar .edge {
+    background: transparent;
+    border: 1px solid currentColor;
+    font-family: var(--font-mono);
+    font-weight: 500;
+}
+
+.lineage-graph__toolbar .edge-fk {
+    color: var(--trace-cyan);
+}
+
+.lineage-graph__toolbar .edge-read {
+    color: #7db8ff;
+}
+
+.lineage-graph__toolbar .edge-write {
+    color: #e8a33d;
+}
+
+.lineage-graph__toolbar .edge-inherits {
+    color: #5cd9a0;
 }
 
 .lineage-graph__actions {
@@ -534,21 +552,61 @@ pre {
     place-items: center;
     height: 28px;
     min-width: 28px;
-    border: 1px solid var(--g-color-line-generic);
+    border: 1px solid rgba(111, 224, 224, 0.35);
     border-radius: 6px;
     padding: 0 10px;
-    color: var(--g-color-text-primary);
-    background: var(--g-color-base-background);
+    color: #dff7f7;
+    background: rgba(255, 255, 255, 0.04);
     cursor: pointer;
     font: inherit;
+}
+
+.lineage-graph__toolbar button:hover {
+    background: rgba(111, 224, 224, 0.14);
 }
 
 .lineage-graph__toolbar button[aria-label] {
     padding: 0;
 }
 
+.lineage-graph__canvas-wrap {
+    position: relative;
+    min-height: 0;
+}
+
 .lineage-graph__canvas {
     min-height: 0;
+}
+
+.reg-mark {
+    position: absolute;
+    z-index: 2;
+    color: rgba(111, 224, 224, 0.45);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+}
+
+.reg-mark--tl {
+    top: 6px;
+    left: 6px;
+}
+
+.reg-mark--tr {
+    top: 6px;
+    right: 6px;
+}
+
+.reg-mark--bl {
+    bottom: 6px;
+    left: 6px;
+}
+
+.reg-mark--br {
+    bottom: 6px;
+    right: 6px;
 }
 
 .lineage-graph:fullscreen {
@@ -558,7 +616,7 @@ pre {
     margin: 0;
     border: 0;
     border-radius: 0;
-    background: var(--g-color-base-generic);
+    background: var(--blueprint-900);
 }
 
 .lineage-graph:fullscreen .lineage-graph__toolbar {
@@ -570,10 +628,14 @@ pre {
     min-height: 220px;
     place-items: center;
     margin-top: 12px;
-    border: 1px dashed var(--g-color-line-generic);
+    border: 1px dashed rgba(111, 224, 224, 0.35);
     border-radius: 8px;
-    color: var(--g-color-text-secondary);
-    background: var(--g-color-base-generic);
+    color: rgba(223, 247, 247, 0.75);
+    background: var(--blueprint-900);
+}
+
+.graph-empty strong {
+    color: var(--trace-cyan);
 }
 
 .graph-empty__hint {
@@ -592,10 +654,10 @@ pre {
     position: relative;
     width: 100%;
     height: 100%;
-    border: 1px solid var(--g-color-line-generic);
-    border-radius: 8px;
+    border: 1px solid rgba(16, 24, 43, 0.16);
+    border-radius: 6px;
     padding: 10px;
-    background: var(--g-color-base-background);
+    background: var(--paper-fixed);
     box-shadow: 0 6px 18px var(--lineage-node-shadow);
 }
 
@@ -665,7 +727,7 @@ pre {
 .lineage-node__tooltip-field code {
     max-width: 120px;
     color: var(--lineage-tooltip-muted);
-    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
 }
 
@@ -696,12 +758,35 @@ pre {
 .lineage-node__type {
     display: inline-flex;
     align-items: center;
-    min-height: 22px;
-    border-radius: 999px;
-    padding: 2px 8px;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 0 !important;
+    background: transparent !important;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     line-height: 16px;
+}
+
+.lineage-node__type::before {
+    content: '[';
+}
+
+.lineage-node__type::after {
+    content: ']';
+}
+
+.lineage-node .type-table {
+    color: var(--graph-type-table);
+}
+
+.lineage-node .type-view,
+.lineage-node .type-materialized_view {
+    color: var(--graph-type-view);
+}
+
+.lineage-node .type-function,
+.lineage-node .type-procedure {
+    color: var(--graph-type-function);
 }
 
 .lineage-node__temp {
@@ -710,8 +795,8 @@ pre {
     right: 10px;
     border-radius: 999px;
     padding: 2px 7px;
-    color: var(--g-color-text-info);
-    background: var(--g-color-base-info-light);
+    color: var(--blueprint-500);
+    background: rgba(46, 111, 214, 0.12);
     font-size: 10px;
     font-weight: 800;
     line-height: 14px;
@@ -720,9 +805,10 @@ pre {
 .lineage-node__name {
     overflow: hidden;
     margin-top: 8px;
-    color: var(--g-color-text-primary);
-    font-size: 15px;
-    font-weight: 700;
+    color: var(--ink-fixed);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
     line-height: 20px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -731,7 +817,7 @@ pre {
 .lineage-node__meta {
     overflow: hidden;
     margin-top: 4px;
-    color: var(--g-color-text-secondary);
+    color: rgba(16, 24, 43, 0.6);
     font-size: 12px;
     line-height: 18px;
     text-overflow: ellipsis;
@@ -753,9 +839,7 @@ pre {
 }
 
 .lineage-graph--dense .lineage-node__type {
-    min-height: 20px;
-    padding: 1px 7px;
-    font-size: 10px;
+    font-size: 9px;
     line-height: 14px;
 }
 
@@ -1098,8 +1182,8 @@ pre {
 }
 
 .version-item__restore:hover:not(:disabled) {
-    background: var(--g-color-base-brand);
-    border-color: var(--g-color-base-brand);
+    background: var(--blueprint-500);
+    border-color: var(--blueprint-500);
     color: #fff;
 }
 
@@ -1113,7 +1197,7 @@ pre {
     width: 15px;
     height: 15px;
     cursor: pointer;
-    accent-color: var(--g-color-base-brand);
+    accent-color: var(--blueprint-500);
 }
 
 .version-item--selected {
@@ -1148,7 +1232,7 @@ pre {
     padding: 5px 14px;
     border: none;
     border-radius: 6px;
-    background: var(--g-color-base-brand);
+    background: var(--blueprint-500);
     color: #fff;
     font-size: 12px;
     font-weight: 500;
@@ -1531,8 +1615,8 @@ pre {
     border: 0;
     border-radius: 6px;
     padding: 0 16px;
-    background: var(--g-color-base-brand);
-    color: var(--g-color-text-light-primary);
+    background: var(--blueprint-500);
+    color: #fff;
     cursor: pointer;
     font: inherit;
     font-size: 13px;

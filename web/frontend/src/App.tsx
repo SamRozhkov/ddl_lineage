@@ -6,12 +6,14 @@ import type {Graph, TBlock, TBlockGeometrySnapshot, TConnection, TGraphColors} f
 import {EAnchorType, ECanDrag, GraphState, useLayeredLayout} from '@gravity-ui/graph';
 import type {UseLayeredLayoutParams} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
-import {ArrowsExpand, ChevronLeft, ChevronRight, ChevronsCollapseUpRight, ClockArrowRotateLeft, Database, Folder, Moon, Plus, Sun} from '@gravity-ui/icons';
+import {ArrowsExpand, ChevronLeft, ChevronRight, ChevronsCollapseUpRight, ClockArrowRotateLeft, Database, Folder, Gear, Moon, Plus, Sun} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
 import {Button, Icon, Theme, ThemeProvider, Toaster, ToasterComponent, ToasterProvider, useToaster} from '@gravity-ui/uikit';
 import {ConnectionsPanel} from './ConnectionsPanel';
 import {HistoryPanel} from './HistoryPanel';
+import {LanguageProvider, useI18n} from './i18n';
 import {ProjectsPanel} from './ProjectsPanel';
+import {SettingsPanel} from './SettingsPanel';
 import Editor from '@monaco-editor/react';
 import React from 'react';
 import {format as formatSql} from 'sql-formatter';
@@ -40,17 +42,20 @@ const toasterInstance = new Toaster();
 export const App = () => {
     const [theme, setTheme] = React.useState<Theme>('light');
     return (
-        <ThemeProvider theme={theme}>
-            <ToasterProvider toaster={toasterInstance}>
-                <AppContent theme={theme} setTheme={setTheme} />
-                <ToasterComponent />
-            </ToasterProvider>
-        </ThemeProvider>
+        <LanguageProvider>
+            <ThemeProvider theme={theme}>
+                <ToasterProvider toaster={toasterInstance}>
+                    <AppContent theme={theme} setTheme={setTheme} />
+                    <ToasterComponent />
+                </ToasterProvider>
+            </ThemeProvider>
+        </LanguageProvider>
     );
 };
 
 const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => void}) => {
     const {add: addToast} = useToaster();
+    const {t, plural} = useI18n();
     const [compact, setCompact] = React.useState(true);
     const [ddl, setDdl] = React.useState(sampleDDL);
     const [result, setResult] = React.useState<AnalysisResult | null>(null);
@@ -61,7 +66,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
     const [projectName, setProjectName] = React.useState('');
     const [isMermaidOpen, setIsMermaidOpen] = React.useState(false);
     const [lastAnalyzedDdl, setLastAnalyzedDdl] = React.useState<string | null>(null);
-    const [activePanel, setActivePanel] = React.useState<'projects' | 'connections' | 'history' | null>(null);
+    const [activePanel, setActivePanel] = React.useState<
+        'projects' | 'connections' | 'history' | 'settings' | null
+    >(null);
     const [editorCollapsed, setEditorCollapsed] = React.useState(false);
     const [scanning, setScanning] = React.useState(false);
     const [scanError, setScanError] = React.useState('');
@@ -80,7 +87,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
         localStorage.setItem('ddl-lineage-connections', JSON.stringify(conns));
     };
 
-    const togglePanel = (panel: 'projects' | 'connections' | 'history') => {
+    const togglePanel = (panel: 'projects' | 'connections' | 'history' | 'settings') => {
         setActivePanel((prev) => (prev === panel ? null : panel));
     };
 
@@ -112,7 +119,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             });
             const payload = (await response.json()) as AnalyzeResponse;
             if (!response.ok || !payload.success || !payload.data) {
-                throw new Error(payload.error || 'Analysis failed');
+                throw new Error(payload.error || t('error.analysisFailed'));
             }
             setResult(payload.data);
             setMermaid(payload.mermaid || '');
@@ -120,15 +127,20 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             await loadProjects();
             const {total_objects, total_edges} = payload.data.stats;
             const cycleCount = payload.data.cycles.length;
+            const parts = [
+                `${total_objects} ${plural(total_objects, 'object')}`,
+                `${total_edges} ${plural(total_edges, 'edge')}`,
+            ];
+            if (cycleCount > 0) parts.push(`${cycleCount} ${plural(cycleCount, 'cycle')}`);
             addToast({
                 name: 'analysis-done',
                 theme: cycleCount > 0 ? 'warning' : 'success',
-                title: 'Analysis complete',
-                content: `${total_objects} objects · ${total_edges} edges${cycleCount > 0 ? ` · ${cycleCount} cycle${cycleCount > 1 ? 's' : ''} detected` : ''}`,
+                title: t('toast.analysisTitle'),
+                content: parts.join(' · '),
                 autoHiding: 4000,
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unexpected error');
+            setError(err instanceof Error ? err.message : t('error.unexpected'));
         } finally {
             setLoading(false);
         }
@@ -141,7 +153,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             const response = await fetch(`/api/project/${encodeURIComponent(name)}`);
             const payload = await response.json();
             if (!response.ok || !payload.success) {
-                throw new Error(payload.error || 'Project load failed');
+                throw new Error(payload.error || t('error.projectLoadFailed'));
             }
             setProjectName(name);
             const loadedDdl = payload.project?.ddl || sampleDDL;
@@ -152,12 +164,12 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             addToast({
                 name: 'project-loaded',
                 theme: 'info',
-                title: 'Project loaded',
+                title: t('toast.projectLoadedTitle'),
                 content: name,
                 autoHiding: 2500,
             });
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unexpected error');
+            setError(err instanceof Error ? err.message : t('error.unexpected'));
         }
     };
 
@@ -166,7 +178,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             setDdl(formatSql(ddl, {language: 'postgresql'}));
             setError('');
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Unable to format SQL');
+            setError(err instanceof Error ? err.message : t('error.formatFailed'));
         }
     };
 
@@ -199,7 +211,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             });
             const payload = await response.json();
             if (!response.ok || !payload.success) {
-                throw new Error(payload.error || 'Connection failed');
+                throw new Error(payload.error || t('error.connectionFailed'));
             }
             setDdl(payload.ddl);
             setResult(null);
@@ -210,14 +222,14 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             addToast({
                 name: 'scan-done',
                 theme: 'success',
-                title: 'Database scanned',
-                content: `DDL extracted — ${lineCount} lines. Click Analyze to build the graph.`,
+                title: t('toast.scanDoneTitle'),
+                content: `${t('toast.scanExtracted', {lines: `${lineCount} ${plural(lineCount, 'line')}`})} ${t('toast.scanHint', {analyze: t('editor.analyze')})}`,
                 autoHiding: 5000,
             });
         } catch (err) {
-            const msg = err instanceof Error ? err.message : 'Connection failed';
+            const msg = err instanceof Error ? err.message : t('error.connectionFailed');
             setScanError(msg);
-            addToast({name: 'scan-error', theme: 'danger', title: 'Scan failed', content: msg, autoHiding: 5000});
+            addToast({name: 'scan-error', theme: 'danger', title: t('toast.scanFailedTitle'), content: msg, autoHiding: 5000});
         } finally {
             setScanning(false);
         }
@@ -231,7 +243,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             );
             const payload = await response.json();
             if (!response.ok || !payload.success) {
-                throw new Error(payload.error || 'Restore failed');
+                throw new Error(payload.error || t('error.restoreFailed'));
             }
             const project = payload.project;
             const restoredDdl = project?.ddl || sampleDDL;
@@ -242,14 +254,14 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             addToast({
                 name: 'version-restored',
                 theme: 'success',
-                title: 'Version restored',
+                title: t('toast.versionRestoredTitle'),
                 autoHiding: 2500,
             });
         } catch (err) {
             addToast({
                 name: 'restore-error',
                 theme: 'danger',
-                title: 'Restore failed',
+                title: t('toast.restoreFailedTitle'),
                 content: err instanceof Error ? err.message : undefined,
                 autoHiding: 3000,
             });
@@ -260,11 +272,16 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
         try {
             const response = await fetch(`/api/project/${encodeURIComponent(name)}`, {method: 'DELETE'});
             const payload = await response.json();
-            if (!response.ok || !payload.success) throw new Error(payload.error || 'Delete failed');
+            if (!response.ok || !payload.success) throw new Error(payload.error || t('error.deleteFailed'));
             setProjects(payload.projects || []);
-            addToast({name: 'project-deleted', theme: 'normal', title: `Project "${name}" deleted`, autoHiding: 2500});
+            addToast({
+                name: 'project-deleted',
+                theme: 'normal',
+                title: t('toast.projectDeletedTitle', {name}),
+                autoHiding: 2500,
+            });
         } catch (err) {
-            addToast({name: 'delete-error', theme: 'danger', title: 'Delete failed', autoHiding: 3000});
+            addToast({name: 'delete-error', theme: 'danger', title: t('toast.deleteFailedTitle'), autoHiding: 3000});
         }
     };
 
@@ -274,11 +291,11 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             addToast({
                 name: `copy-${label}`,
                 theme: 'success',
-                title: `${label} copied to clipboard`,
+                title: t('toast.copiedTitle', {label}),
                 autoHiding: 2000,
             });
         } catch {
-            addToast({name: 'copy-error', theme: 'danger', title: 'Copy failed', autoHiding: 2000});
+            addToast({name: 'copy-error', theme: 'danger', title: t('toast.copyFailedTitle'), autoHiding: 2000});
         }
     };
 
@@ -305,24 +322,31 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             menuItems={[
                 {
                     id: 'projects',
-                    title: 'Projects',
+                    title: t('menu.projects'),
                     icon: Folder,
                     current: activePanel === 'projects',
                     onItemClick: () => togglePanel('projects'),
                 },
                 {
                     id: 'connections',
-                    title: 'Connections',
+                    title: t('menu.connections'),
                     icon: Database,
                     current: activePanel === 'connections',
                     onItemClick: () => togglePanel('connections'),
                 },
                 {
                     id: 'history',
-                    title: 'History',
+                    title: t('menu.history'),
                     icon: ClockArrowRotateLeft,
                     current: activePanel === 'history',
                     onItemClick: () => togglePanel('history'),
+                },
+                {
+                    id: 'settings',
+                    title: t('menu.settings'),
+                    icon: Gear,
+                    current: activePanel === 'settings',
+                    onItemClick: () => togglePanel('settings'),
                 },
             ]}
             panelItems={[
@@ -368,6 +392,11 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                         />
                     ),
                 },
+                {
+                    id: 'settings',
+                    visible: activePanel === 'settings',
+                    children: <SettingsPanel />,
+                },
             ]}
             onClosePanel={() => setActivePanel(null)}
             renderFooter={() => (
@@ -375,7 +404,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                     <Button
                         size="l"
                         view="flat"
-                        title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+                        title={isDark ? t('theme.toLight') : t('theme.toDark')}
                         onClick={() => setTheme(isDark ? 'light' : 'dark')}
                     >
                         <Icon data={isDark ? Sun : Moon} />
@@ -399,18 +428,18 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                     <section className={`workspace${editorCollapsed ? ' workspace--collapsed' : ''}`}>
                         <div className={`editor-pane${editorCollapsed ? ' editor-pane--collapsed' : ''}`}>
                             <div className="pane-header">
-                                <h2>DDL</h2>
+                                <h2>{t('editor.title')}</h2>
                                 <div className="editor-actions">
                                     {!editorCollapsed && (
                                         <>
                                             <button
                                                 type="button"
                                                 className="btn-secondary btn-icon"
-                                                title="New analysis"
+                                                title={t('editor.newTitle')}
                                                 onClick={clearAll}
                                             >
                                                 <Icon data={Plus} size={14} />
-                                                New
+                                                {t('editor.new')}
                                             </button>
                                             <button
                                                 type="button"
@@ -418,7 +447,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 onClick={formatDdl}
                                                 disabled={!ddl.trim()}
                                             >
-                                                Format SQL
+                                                {t('editor.formatSql')}
                                             </button>
                                             <button
                                                 type="button"
@@ -427,14 +456,14 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 onClick={() => void analyze()}
                                                 disabled={loading || !ddl.trim()}
                                             >
-                                                {loading ? 'Analyzing…' : 'Analyze'}
+                                                {loading ? t('editor.analyzing') : t('editor.analyze')}
                                             </button>
                                         </>
                                     )}
                                     <button
                                         type="button"
                                         className="btn-secondary btn-collapse"
-                                        title={editorCollapsed ? 'Expand editor' : 'Collapse editor'}
+                                        title={editorCollapsed ? t('editor.expand') : t('editor.collapse')}
                                         onClick={() => setEditorCollapsed((v) => !v)}
                                     >
                                         <Icon
@@ -456,7 +485,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                             options={{
                                                 automaticLayout: true,
                                                 minimap: {enabled: false},
-                                                fontFamily: 'SFMono-Regular, Consolas, monospace',
+                                                fontFamily: "'IBM Plex Mono', SFMono-Regular, Consolas, monospace",
                                                 fontSize: 13,
                                                 lineHeight: 20,
                                                 scrollBeyondLastLine: false,
@@ -471,159 +500,151 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                         </div>
 
                         <div className={`results-pane${loading ? ' results-pane--loading' : ''}`}>
-                            <div className="stats-grid">
-                                <Metric label="Objects" value={result?.stats?.total_objects ?? 0} />
-                                <Metric label="Edges" value={result?.stats?.total_edges ?? 0} />
-                                <Metric
-                                    label="Cycles"
-                                    value={result?.cycles?.length ?? 0}
-                                    variant={
-                                        result
-                                            ? (result.cycles?.length ?? 0) > 0
-                                                ? 'danger'
-                                                : 'success'
-                                            : undefined
-                                    }
-                                />
-                            </div>
-
                             <section className="panel">
-                                <h2>Graph</h2>
+                                <h2>{t('results.graph')}</h2>
                                 <LineageGraph result={result} isDark={isDark} />
                             </section>
 
-                            <section className="panel">
-                                <h2>
-                                    Objects
-                                    {result && (
-                                        <span className="panel-count">{result.objects.length}</span>
-                                    )}
-                                </h2>
-                                <div className="table-wrap">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Name</th>
-                                                <th>Type</th>
-                                                <th>Columns</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(result?.objects || []).map((object) => (
-                                                <tr key={`${object.type}-${object.name}`}>
-                                                    <td>
-                                                        {object.schema
-                                                            ? `${object.schema}.${object.name}`
-                                                            : object.name}
-                                                        {object.temporary && (
-                                                            <span className="temp-badge">TEMP</span>
-                                                        )}
-                                                    </td>
-                                                    <td>
-                                                        <span
-                                                            className={`edge type-${object.type.toLowerCase()}`}
-                                                        >
-                                                            {object.type}
-                                                        </span>
-                                                    </td>
-                                                    <td>{object.columns.length}</td>
+                            <section className="panel panel--merged">
+                                <div className="panel__block">
+                                    <h2>
+                                        {t('results.objects')}
+                                        {result && (
+                                            <span className="panel-count">{result.objects.length}</span>
+                                        )}
+                                    </h2>
+                                    <div className="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>{t('table.name')}</th>
+                                                    <th>{t('table.type')}</th>
+                                                    <th>{t('table.columns')}</th>
                                                 </tr>
-                                            ))}
-                                            {!result && <EmptyRow colSpan={3} />}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </section>
-
-                            <section className="panel">
-                                <h2>
-                                    Relationships
-                                    {result && (
-                                        <span className="panel-count">{result.edges.length}</span>
-                                    )}
-                                </h2>
-                                <div className="table-wrap">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th>Source</th>
-                                                <th>Type</th>
-                                                <th>Target</th>
-                                                <th>Details</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(result?.edges || []).map((edge, index) => (
-                                                <tr
-                                                    key={`${edge.source}-${edge.target}-${edge.type}-${index}`}
-                                                >
-                                                    <td>{edge.source}</td>
-                                                    <td>
-                                                        <span
-                                                            className={`edge edge-${edge.type.toLowerCase()}`}
-                                                        >
-                                                            {edge.type}
-                                                        </span>
-                                                    </td>
-                                                    <td>{edge.target}</td>
-                                                    <td>{edge.details || edge.via || '-'}</td>
-                                                </tr>
-                                            ))}
-                                            {!result && <EmptyRow colSpan={4} />}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </section>
-
-                            <section className="panel">
-                                <h2>Execution Order</h2>
-                                <div className="exec-order">
-                                    {result?.topo_order?.length ? (
-                                        result.topo_order.map((name, i) => (
-                                            <React.Fragment key={name + i}>
-                                                {i > 0 && <span className="exec-order__sep">→</span>}
-                                                <span className="exec-order__step">{name}</span>
-                                            </React.Fragment>
-                                        ))
-                                    ) : (
-                                        <span className="exec-order__empty">No analysis yet</span>
-                                    )}
-                                </div>
-                            </section>
-
-                            <section className="panel">
-                                <div className="collapsible-header">
-                                    <h2>Export</h2>
-                                    <div className="export-actions">
-                                        <button
-                                            type="button"
-                                            className="btn-secondary"
-                                            disabled={!mermaid}
-                                            onClick={() => void copyText(mermaid, 'Mermaid')}
-                                        >
-                                            Copy Mermaid
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn-secondary"
-                                            disabled={!result}
-                                            onClick={() =>
-                                                void copyText(JSON.stringify(result, null, 2), 'JSON')
-                                            }
-                                        >
-                                            Copy JSON
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn-secondary"
-                                            aria-expanded={isMermaidOpen}
-                                            onClick={() => setIsMermaidOpen((open) => !open)}
-                                        >
-                                            {isMermaidOpen ? 'Hide preview' : 'Preview'}
-                                        </button>
+                                            </thead>
+                                            <tbody>
+                                                {(result?.objects || []).map((object) => (
+                                                    <tr key={`${object.type}-${object.name}`}>
+                                                        <td>
+                                                            {object.schema
+                                                                ? `${object.schema}.${object.name}`
+                                                                : object.name}
+                                                            {object.temporary && (
+                                                                <span className="temp-badge">{t('node.temp')}</span>
+                                                            )}
+                                                        </td>
+                                                        <td>
+                                                            <span
+                                                                className={`edge type-${object.type.toLowerCase()}`}
+                                                            >
+                                                                {object.type}
+                                                            </span>
+                                                        </td>
+                                                        <td>{object.columns.length}</td>
+                                                    </tr>
+                                                ))}
+                                                {!result && <EmptyRow colSpan={3} text={t('table.empty')} />}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                                {isMermaidOpen && <pre>{mermaid || 'graph LR'}</pre>}
+
+                                <div className="panel__hr" />
+
+                                <div className="panel__block">
+                                    <h2>
+                                        {t('results.relationships')}
+                                        {result && (
+                                            <span className="panel-count">{result.edges.length}</span>
+                                        )}
+                                    </h2>
+                                    <div className="table-wrap">
+                                        <table>
+                                            <thead>
+                                                <tr>
+                                                    <th>{t('table.source')}</th>
+                                                    <th>{t('table.type')}</th>
+                                                    <th>{t('table.target')}</th>
+                                                    <th>{t('table.details')}</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(result?.edges || []).map((edge, index) => (
+                                                    <tr
+                                                        key={`${edge.source}-${edge.target}-${edge.type}-${index}`}
+                                                    >
+                                                        <td>{edge.source}</td>
+                                                        <td>
+                                                            <span
+                                                                className={`edge edge-${edge.type.toLowerCase()}`}
+                                                            >
+                                                                {edge.type}
+                                                            </span>
+                                                        </td>
+                                                        <td>{edge.target}</td>
+                                                        <td>{edge.details || edge.via || '-'}</td>
+                                                    </tr>
+                                                ))}
+                                                {!result && <EmptyRow colSpan={4} text={t('table.empty')} />}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <div className="panel__hr" />
+
+                                <div className="panel__block">
+                                    <h2>{t('results.executionOrder')}</h2>
+                                    <div className="exec-order">
+                                        {result?.topo_order?.length ? (
+                                            result.topo_order.map((name, i) => (
+                                                <React.Fragment key={name + i}>
+                                                    {i > 0 && <span className="exec-order__sep">→</span>}
+                                                    <span className="exec-order__step">{name}</span>
+                                                </React.Fragment>
+                                            ))
+                                        ) : (
+                                            <span className="exec-order__empty">{t('execOrder.empty')}</span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="panel__hr" />
+
+                                <div className="panel__block">
+                                    <div className="collapsible-header">
+                                        <h2>{t('results.export')}</h2>
+                                        <div className="export-actions">
+                                            <button
+                                                type="button"
+                                                className="btn-secondary"
+                                                disabled={!mermaid}
+                                                onClick={() => void copyText(mermaid, 'Mermaid')}
+                                            >
+                                                {t('export.copyMermaid')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn-secondary"
+                                                disabled={!result}
+                                                onClick={() =>
+                                                    void copyText(JSON.stringify(result, null, 2), 'JSON')
+                                                }
+                                            >
+                                                {t('export.copyJson')}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="btn-secondary"
+                                                aria-expanded={isMermaidOpen}
+                                                onClick={() => setIsMermaidOpen((open) => !open)}
+                                            >
+                                                {isMermaidOpen ? t('export.hidePreview') : t('export.preview')}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {isMermaidOpen && <pre>{mermaid || 'graph LR'}</pre>}
+                                </div>
                             </section>
                         </div>
                     </section>
@@ -633,25 +654,10 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
     );
 };
 
-const Metric = ({
-    label,
-    value,
-    variant,
-}: {
-    label: string;
-    value: number;
-    variant?: 'danger' | 'success';
-}) => (
-    <div className={`metric${variant ? ` metric--${variant}` : ''}`}>
-        <span>{label}</span>
-        <strong key={value}>{value}</strong>
-    </div>
-);
-
-const EmptyRow = ({colSpan}: {colSpan: number}) => (
+const EmptyRow = ({colSpan, text}: {colSpan: number; text: string}) => (
     <tr>
         <td colSpan={colSpan} className="empty">
-            Run analysis to populate this table.
+            {text}
         </td>
     </tr>
 );
@@ -664,6 +670,7 @@ const EDGE_LEGEND = [
 ] as const;
 
 const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: boolean}) => {
+    const {t, plural} = useI18n();
     const graphContainerRef = React.useRef<HTMLDivElement | null>(null);
     const [isFullscreen, setIsFullscreen] = React.useState(false);
 
@@ -791,11 +798,11 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                 targetBlockId: e.source,
                 targetAnchorId: `${e.source}-in`,
                 label: e.details ? `${e.type} ${e.details}` : e.type,
-                styles: edgeStyles(e.type, isDark),
+                styles: edgeStyles(e.type),
             }));
 
         return {blocks, connections};
-    }, [result, isDark, layoutResult, blockDims]);
+    }, [result, layoutResult, blockDims]);
 
     const blockIds = React.useMemo(
         () => graphEntities.blocks.map((block) => block.id),
@@ -869,11 +876,15 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                                 </div>
                             ))
                         ) : (
-                            <div className="lineage-node__tooltip-empty">No fields detected</div>
+                            <div className="lineage-node__tooltip-empty">{t('node.noFields')}</div>
                         )}
                         {hiddenFieldCount > 0 && (
                             <div className="lineage-node__tooltip-more">
-                                +{hiddenFieldCount} more fields
+                                +
+                                {t('node.moreFields', {
+                                    count: hiddenFieldCount,
+                                    word: plural(hiddenFieldCount, 'field'),
+                                })}
                             </div>
                         )}
                     </div>
@@ -881,21 +892,24 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                 <div className={`lineage-node__type type-${meta?.objectType.toLowerCase()}`}>
                     {objectType}
                 </div>
-                {meta?.temporary && <div className="lineage-node__temp">TEMP</div>}
+                {meta?.temporary && <div className="lineage-node__temp">{t('node.temp')}</div>}
                 <div className="lineage-node__name">{typedBlock.name}</div>
                 <div className="lineage-node__meta">
                     {meta?.schema ? `${meta.schema} · ` : ''}
-                    {meta?.columns ?? 0} columns
+                    {meta?.columns ?? 0} {plural(meta?.columns ?? 0, 'column')}
                 </div>
             </GraphBlock>
         );
-    }, []);
+    }, [t, plural]);
 
     if (!result) {
+        const [hintBefore, hintAfter] = t('graph.emptyHint').split('{analyze}');
         return (
             <div className="graph-empty">
                 <div className="graph-empty__hint">
-                    Enter DDL on the left and click <strong>Analyze</strong>
+                    {hintBefore}
+                    <strong>{t('editor.analyze')}</strong>
+                    {hintAfter}
                 </div>
             </div>
         );
@@ -908,9 +922,19 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
               ? 'lineage-graph--large'
               : '';
 
+    const cycleCount = result.cycles.length;
+
     return (
         <div ref={graphContainerRef} className={`lineage-graph ${graphSizeClass}`}>
             <div className="lineage-graph__toolbar">
+                <div className="lineage-titleblock">
+                    <span
+                        className={`lineage-titleblock__text${cycleCount > 0 ? ' lineage-titleblock__text--warn' : ''}`}
+                    >
+                        {t('graph.titleObj')} {result.stats.total_objects} · {t('graph.titleEdge')}{' '}
+                        {result.stats.total_edges} · {t('graph.titleCycles')} {cycleCount}
+                    </span>
+                </div>
                 <div className="lineage-legend">
                     {EDGE_LEGEND.map(({type, cls}) => (
                         <span key={type} className={`edge ${cls}`}>
@@ -920,12 +944,12 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                 </div>
                 <div className="lineage-graph__actions">
                     <button type="button" onClick={fitGraph}>
-                        Fit
+                        {t('graph.fit')}
                     </button>
                     <button
                         type="button"
-                        aria-label={isFullscreen ? 'Exit fullscreen' : 'Open graph fullscreen'}
-                        title={isFullscreen ? 'Exit fullscreen' : 'Open graph fullscreen'}
+                        aria-label={isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')}
+                        title={isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')}
                         onClick={() => void toggleFullscreen()}
                     >
                         <Icon
@@ -935,112 +959,75 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                     </button>
                 </div>
             </div>
-            <GraphCanvas
-                className="lineage-graph__canvas"
-                graph={graph}
-                renderBlock={renderBlock}
-                onStateChanged={({state}) => {
-                    if (state === GraphState.ATTACHED) {
-                        start();
-                        fitGraph();
-                    }
-                }}
-            />
+            <div className="lineage-graph__canvas-wrap">
+                <span className="reg-mark reg-mark--tl">+</span>
+                <span className="reg-mark reg-mark--tr">+</span>
+                <span className="reg-mark reg-mark--bl">+</span>
+                <span className="reg-mark reg-mark--br">+</span>
+                <GraphCanvas
+                    className="lineage-graph__canvas"
+                    graph={graph}
+                    renderBlock={renderBlock}
+                    onStateChanged={({state}) => {
+                        if (state === GraphState.ATTACHED) {
+                            start();
+                            fitGraph();
+                        }
+                    }}
+                />
+            </div>
         </div>
     );
 };
 
-function edgeStyles(type: string, isDark: boolean): TConnection['styles'] {
+function edgeStyles(type: string): TConnection['styles'] {
     if (type === 'WRITE') {
-        return isDark
-            ? {background: '#ff9d66', selectedBackground: '#ffb88a'}
-            : {background: '#b54708', selectedBackground: '#93370d'};
+        return {background: '#e8a33d', selectedBackground: '#ffc978'};
     }
     if (type === 'READ') {
-        return isDark
-            ? {background: '#72b5ff', selectedBackground: '#a8d2ff'}
-            : {background: '#0b65d8', selectedBackground: '#084b83'};
+        return {background: '#7db8ff', selectedBackground: '#aed4ff'};
     }
     if (type === 'INHERITS') {
-        return isDark
-            ? {background: '#9bd36a', selectedBackground: '#b7e48e', dashes: [8, 6]}
-            : {background: '#3f7b1f', selectedBackground: '#2f5d16', dashes: [8, 6]};
+        return {background: '#5cd9a0', selectedBackground: '#8ce8bc', dashes: [8, 6]};
     }
-    return isDark
-        ? {background: '#b3bac6', selectedBackground: '#d0d5dd', dashes: [6, 5]}
-        : {background: '#626a76', selectedBackground: '#394150', dashes: [6, 5]};
+    return {background: '#6fe0e0', selectedBackground: '#a8f0f0', dashes: [6, 5]};
 }
 
+// The graph canvas is a fixed cyanotype "instrument" — it keeps the same
+// blueprint palette regardless of the app's light/dark theme.
 function graphThemeColors(isDark: boolean): TGraphColors {
-    if (isDark) {
-        return {
-            canvas: {
-                belowLayerBackground: '#111827',
-                layerBackground: '#111827',
-                dots: '#334155',
-                border: '#334155',
-            },
-            block: {
-                background: '#1f2937',
-                border: '#475569',
-                text: '#f8fafc',
-                selectedBorder: '#72b5ff',
-            },
-            anchor: {
-                background: '#94a3b8',
-                selectedBorder: '#72b5ff',
-            },
-            connection: {
-                background: '#94a3b8',
-                selectedBackground: '#d0d5dd',
-            },
-            connectionLabel: {
-                background: '#1f2937',
-                hoverBackground: '#334155',
-                selectedBackground: '#0f3b66',
-                text: '#e5e7eb',
-                hoverText: '#ffffff',
-                selectedText: '#ffffff',
-            },
-            selection: {
-                background: 'rgba(114, 181, 255, 0.18)',
-                border: '#72b5ff',
-            },
-        };
-    }
-
     return {
         canvas: {
-            belowLayerBackground: '#f4f6f8',
-            layerBackground: '#f4f6f8',
-            dots: '#d8dee8',
-            border: '#d8dee8',
+            belowLayerBackground: '#0e2a52',
+            layerBackground: '#0e2a52',
+            dots: 'rgba(111, 224, 224, 0.18)',
+            border: isDark ? '#2c4a78' : '#0b2242',
         },
         block: {
-            background: '#ffffff',
-            border: '#d8dee8',
-            text: '#1f2937',
-            selectedBorder: '#0b65d8',
+            background: '#f5f6f2',
+            border: 'rgba(16, 24, 43, 0.16)',
+            text: '#10182b',
+            selectedBorder: '#6fe0e0',
         },
         anchor: {
-            background: '#7b8794',
-            selectedBorder: '#0b65d8',
+            background: '#6fe0e0',
+            selectedBorder: '#6fe0e0',
         },
         connection: {
-            background: '#626a76',
-            selectedBackground: '#394150',
+            background: '#6fe0e0',
+            selectedBackground: '#bff5f5',
         },
         connectionLabel: {
-            background: '#ffffff',
-            hoverBackground: '#f4f6f8',
-            selectedBackground: '#dff0ff',
-            text: '#394150',
-            hoverText: '#1f2937',
-            selectedText: '#084b83',
+            background: '#0e2a52',
+            hoverBackground: '#123a6e',
+            selectedBackground: '#123a6e',
+            text: '#cfe7ff',
+            hoverText: '#ffffff',
+            selectedText: '#ffffff',
         },
         selection: {
-            background: 'rgba(11, 101, 216, 0.12)',
-            border: '#0b65d8',
+            background: 'rgba(111, 224, 224, 0.14)',
+            border: '#6fe0e0',
         },
     };
 }

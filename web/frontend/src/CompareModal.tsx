@@ -1,6 +1,7 @@
 import {Modal, Spin} from '@gravity-ui/uikit';
 import React from 'react';
 
+import {useI18n} from './i18n';
 import {AnalysisResult, ProjectHistoryEntry} from './types';
 
 interface Props {
@@ -82,6 +83,7 @@ function computeDiff(a: AnalysisResult, b: AnalysisResult) {
 }
 
 export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versionA, versionB}) => {
+    const {t, plural} = useI18n();
     const [loading, setLoading] = React.useState(false);
     const [analysisA, setAnalysisA] = React.useState<AnalysisResult | null>(null);
     const [analysisB, setAnalysisB] = React.useState<AnalysisResult | null>(null);
@@ -125,12 +127,12 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
         <Modal open={open} onClose={onClose} contentOverflow="auto">
             <div className="compare-modal">
                 <div className="compare-modal__header">
-                    <div className="compare-modal__title">Version comparison</div>
+                    <div className="compare-modal__title">{t('compare.title')}</div>
                     <div className="compare-modal__versions">
                         <span className="compare-ver compare-ver--a">
                             #{indexA} &nbsp;{formatDate(versionA.timestamp)}
                         </span>
-                        <span className="compare-arrow">vs</span>
+                        <span className="compare-arrow">{t('compare.vs')}</span>
                         <span className="compare-ver compare-ver--b">
                             #{indexB} &nbsp;{formatDate(versionB.timestamp)}
                         </span>
@@ -151,44 +153,42 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
 
                     {diff && (
                         <>
-                            {/* Stats bar */}
                             <div className="compare-stats">
                                 {addedObjects > 0 && (
                                     <span className="compare-chip compare-chip--added">
-                                        +{addedObjects} object{addedObjects !== 1 ? 's' : ''}
+                                        +{addedObjects} {plural(addedObjects, 'object')}
                                     </span>
                                 )}
                                 {removedObjects > 0 && (
                                     <span className="compare-chip compare-chip--removed">
-                                        −{removedObjects} object{removedObjects !== 1 ? 's' : ''}
+                                        −{removedObjects} {plural(removedObjects, 'object')}
                                     </span>
                                 )}
                                 {addedEdges > 0 && (
                                     <span className="compare-chip compare-chip--added">
-                                        +{addedEdges} edge{addedEdges !== 1 ? 's' : ''}
+                                        +{addedEdges} {plural(addedEdges, 'edge')}
                                     </span>
                                 )}
                                 {removedEdges > 0 && (
                                     <span className="compare-chip compare-chip--removed">
-                                        −{removedEdges} edge{removedEdges !== 1 ? 's' : ''}
+                                        −{removedEdges} {plural(removedEdges, 'edge')}
                                     </span>
                                 )}
                                 {addedObjects === 0 && removedObjects === 0 && addedEdges === 0 && removedEdges === 0 && (
-                                    <span className="compare-chip">No structural changes</span>
+                                    <span className="compare-chip">{t('compare.noChanges')}</span>
                                 )}
                             </div>
 
-                            {/* Objects */}
-                            <div className="compare-section-title">Objects</div>
+                            <div className="compare-section-title">{t('compare.objects')}</div>
                             <div className="table-wrap">
                                 <table>
                                     <thead>
                                         <tr>
                                             <th></th>
-                                            <th>Name</th>
-                                            <th>Type</th>
-                                            <th>Columns (new)</th>
-                                            <th>Columns (old)</th>
+                                            <th>{t('table.name')}</th>
+                                            <th>{t('table.type')}</th>
+                                            <th>{t('compare.columnsNew')}</th>
+                                            <th>{t('compare.columnsOld')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -218,18 +218,17 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
                                 </table>
                             </div>
 
-                            {/* Edges */}
                             {(diff.edges.length > 0) && (
                                 <>
-                                    <div className="compare-section-title">Edges</div>
+                                    <div className="compare-section-title">{t('compare.edges')}</div>
                                     <div className="table-wrap">
                                         <table>
                                             <thead>
                                                 <tr>
                                                     <th></th>
-                                                    <th>Source</th>
-                                                    <th>Type</th>
-                                                    <th>Target</th>
+                                                    <th>{t('table.source')}</th>
+                                                    <th>{t('table.type')}</th>
+                                                    <th>{t('table.target')}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>

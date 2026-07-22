@@ -2,6 +2,7 @@ import {CirclePlay, Plus, TrashBin} from '@gravity-ui/icons';
 import {Icon, PasswordInput, Select, Spin, TextInput} from '@gravity-ui/uikit';
 import React from 'react';
 
+import {useI18n} from './i18n';
 import {ConnectFormData, SavedConnection} from './types';
 
 const DEFAULT_FORM: ConnectFormData = {
@@ -32,6 +33,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
     onSave,
     onDelete,
 }) => {
+    const {t} = useI18n();
     const [showForm, setShowForm] = React.useState(savedConnections.length === 0);
     const [form, setForm] = React.useState<ConnectFormData>(DEFAULT_FORM);
 
@@ -76,7 +78,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
     return (
         <div className="side-panel">
             <div className="side-panel__header">
-                <h3>Connections</h3>
+                <h3>{t('connections.title')}</h3>
                 {!showForm && (
                     <button
                         type="button"
@@ -87,13 +89,12 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         }}
                     >
                         <Icon data={Plus} size={14} />
-                        New
+                        {t('connections.new')}
                     </button>
                 )}
             </div>
 
             <div className="side-panel__body">
-                {/* Saved connection list */}
                 {!showForm && savedConnections.length > 0 && (
                     <div className="conn-list">
                         {savedConnections.map((conn) => (
@@ -115,7 +116,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                     <button
                                         type="button"
                                         className="conn-item__btn"
-                                        title="Edit & scan"
+                                        title={t('connections.editScanTitle')}
                                         onClick={() => loadIntoForm(conn)}
                                     >
                                         <Icon data={CirclePlay} size={16} />
@@ -123,7 +124,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                     <button
                                         type="button"
                                         className="conn-item__btn conn-item__btn--danger"
-                                        title="Remove connection"
+                                        title={t('connections.removeTitle')}
                                         onClick={() => onDelete(conn.id)}
                                     >
                                         <Icon data={TrashBin} size={14} />
@@ -136,7 +137,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
 
                 {!showForm && savedConnections.length === 0 && (
                     <div className="side-panel__empty">
-                        No saved connections.
+                        {t('connections.empty')}
                         <button
                             type="button"
                             className="btn-link"
@@ -145,26 +146,25 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 setShowForm(true);
                             }}
                         >
-                            Add first connection →
+                            {t('connections.addFirst')}
                         </button>
                     </div>
                 )}
 
-                {/* Connection form */}
                 {showForm && (
                     <div className="conn-form">
                         <div className="conn-form__field">
-                            <label className="conn-form__label">Name (optional)</label>
+                            <label className="conn-form__label">{t('connections.form.name')}</label>
                             <TextInput
                                 value={form.name}
                                 onUpdate={update('name')}
-                                placeholder="My Production DB"
+                                placeholder={t('connections.form.namePlaceholder')}
                                 size="m"
                             />
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">Database type</label>
+                            <label className="conn-form__label">{t('connections.form.dbType')}</label>
                             <Select
                                 value={[form.type]}
                                 onUpdate={handleTypeChange}
@@ -179,7 +179,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
 
                         <div className="conn-form__row">
                             <div className="conn-form__field conn-form__field--grow">
-                                <label className="conn-form__label">Host</label>
+                                <label className="conn-form__label">{t('connections.form.host')}</label>
                                 <TextInput
                                     value={form.host}
                                     onUpdate={update('host')}
@@ -188,7 +188,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 />
                             </div>
                             <div className="conn-form__field conn-form__field--port">
-                                <label className="conn-form__label">Port</label>
+                                <label className="conn-form__label">{t('connections.form.port')}</label>
                                 <TextInput
                                     value={form.port}
                                     onUpdate={update('port')}
@@ -199,18 +199,18 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">Database</label>
+                            <label className="conn-form__label">{t('connections.form.database')}</label>
                             <TextInput
                                 value={form.database}
                                 onUpdate={update('database')}
-                                placeholder="mydb"
+                                placeholder={t('connections.form.databasePlaceholder')}
                                 size="m"
                             />
                         </div>
 
                         {form.type === 'postgresql' && (
                             <div className="conn-form__field">
-                                <label className="conn-form__label">Schema</label>
+                                <label className="conn-form__label">{t('connections.form.schema')}</label>
                                 <TextInput
                                     value={form.schema}
                                     onUpdate={update('schema')}
@@ -221,7 +221,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         )}
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">Username</label>
+                            <label className="conn-form__label">{t('connections.form.username')}</label>
                             <TextInput
                                 value={form.username}
                                 onUpdate={update('username')}
@@ -231,14 +231,14 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">Password</label>
+                            <label className="conn-form__label">{t('connections.form.password')}</label>
                             <PasswordInput
                                 value={form.password}
                                 onUpdate={update('password')}
                                 placeholder="••••••••"
                                 size="m"
                             />
-                            <span className="conn-form__hint">Not saved — required each scan</span>
+                            <span className="conn-form__hint">{t('connections.form.passwordHint')}</span>
                         </div>
 
                         {scanError && <div className="conn-form__error">{scanError}</div>}
@@ -250,7 +250,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                     className="btn-secondary"
                                     onClick={() => setShowForm(false)}
                                 >
-                                    Cancel
+                                    {t('connections.form.cancel')}
                                 </button>
                             )}
                             <button
@@ -259,7 +259,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 disabled={!form.host || !form.database || !form.username}
                                 onClick={handleSave}
                             >
-                                Save
+                                {t('connections.form.save')}
                             </button>
                             <button
                                 type="button"
@@ -270,12 +270,12 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 {scanning ? (
                                     <>
                                         <Spin size="xs" />
-                                        Scanning…
+                                        {t('connections.form.scanning')}
                                     </>
                                 ) : (
                                     <>
                                         <Icon data={CirclePlay} size={14} />
-                                        Scan DB
+                                        {t('connections.form.scan')}
                                     </>
                                 )}
                             </button>

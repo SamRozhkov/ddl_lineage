@@ -3,6 +3,7 @@ import {Icon, Spin} from '@gravity-ui/uikit';
 import React from 'react';
 
 import {CompareModal} from './CompareModal';
+import {formatRelativeTime, useI18n} from './i18n';
 import {ProjectHistoryEntry} from './types';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) => {
+    const {t, plural} = useI18n();
     const [history, setHistory] = React.useState<ProjectHistoryEntry[]>([]);
     const [loading, setLoading] = React.useState(false);
     const [restoringId, setRestoringId] = React.useState<number | null>(null);
@@ -71,12 +73,12 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
     return (
         <div className="side-panel">
             <div className="side-panel__header">
-                <h3>Analysis History</h3>
+                <h3>{t('history.title')}</h3>
                 {projectName && (
                     <button
                         type="button"
                         className="side-panel__add"
-                        title="Refresh"
+                        title={t('history.refreshTitle')}
                         onClick={refresh}
                         disabled={loading}
                     >
@@ -87,17 +89,13 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
 
             <div className="side-panel__body">
                 {!projectName ? (
-                    <div className="side-panel__empty">
-                        Open a project to see its analysis history.
-                    </div>
+                    <div className="side-panel__empty">{t('history.openProjectHint')}</div>
                 ) : loading ? (
                     <div className="side-panel__empty">
                         <Spin size="s" />
                     </div>
                 ) : history.length === 0 ? (
-                    <div className="side-panel__empty">
-                        No saved analyses yet. Run Analyze to create the first version.
-                    </div>
+                    <div className="side-panel__empty">{t('history.empty')}</div>
                 ) : (
                     <>
                         <div className="side-panel__section">
@@ -108,9 +106,7 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                         </div>
 
                         {history.length >= 2 && (
-                            <div className="history-hint">
-                                Select 2 versions to compare
-                            </div>
+                            <div className="history-hint">{t('history.selectHint')}</div>
                         )}
 
                         <div className="version-list">
@@ -127,7 +123,7 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                                                 className="version-item__check"
                                                 checked={isSelected}
                                                 onChange={() => toggleSelect(entry.id)}
-                                                aria-label={`Select version ${history.length - index}`}
+                                                aria-label={t('history.selectVersion', {v: history.length - index})}
                                             />
                                         )}
                                         <div className="version-item__meta">
@@ -136,13 +132,14 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                                             </span>
                                             <span className="version-item__time">
                                                 <Icon data={Clock} size={11} />
-                                                {formatRelativeDate(entry.timestamp)}
+                                                {formatRelativeTime(entry.timestamp, t)}
                                             </span>
                                             {entry.summary.total_objects !== undefined && (
                                                 <span className="version-item__stats">
-                                                    {entry.summary.total_objects} objects
+                                                    {entry.summary.total_objects}{' '}
+                                                    {plural(entry.summary.total_objects, 'object')}
                                                     {entry.summary.total_edges !== undefined
-                                                        ? ` · ${entry.summary.total_edges} edges`
+                                                        ? ` · ${entry.summary.total_edges} ${plural(entry.summary.total_edges, 'edge')}`
                                                         : ''}
                                                 </span>
                                             )}
@@ -156,7 +153,7 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                                             {restoringId === entry.id ? (
                                                 <Spin size="xs" />
                                             ) : (
-                                                'Restore'
+                                                t('history.restore')
                                             )}
                                         </button>
                                     </div>
@@ -167,20 +164,23 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                         {selectedIds.length === 2 && compareVersions && (
                             <div className="history-compare-bar">
                                 <span className="history-compare-bar__label">
-                                    v{history.length - history.findIndex((h) => h.id === selectedIds[0])} vs v{history.length - history.findIndex((h) => h.id === selectedIds[1])}
+                                    {t('history.compareLabel', {
+                                        a: history.length - history.findIndex((h) => h.id === selectedIds[0]),
+                                        b: history.length - history.findIndex((h) => h.id === selectedIds[1]),
+                                    })}
                                 </span>
                                 <button
                                     type="button"
                                     className="history-compare-bar__btn"
                                     onClick={() => setCompareOpen(true)}
                                 >
-                                    Compare
+                                    {t('history.compareBtn')}
                                 </button>
                                 <button
                                     type="button"
                                     className="history-compare-bar__clear"
                                     onClick={() => setSelectedIds([])}
-                                    title="Clear selection"
+                                    title={t('history.clearTitle')}
                                 >
                                     ✕
                                 </button>
@@ -202,17 +202,3 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
         </div>
     );
 };
-
-function formatRelativeDate(isoString: string): string {
-    try {
-        const diff = Date.now() - new Date(isoString).getTime();
-        const mins = Math.floor(diff / 60000);
-        if (mins < 1) return 'just now';
-        if (mins < 60) return `${mins}m ago`;
-        const hours = Math.floor(mins / 60);
-        if (hours < 24) return `${hours}h ago`;
-        return `${Math.floor(hours / 24)}d ago`;
-    } catch {
-        return '';
-    }
-}
