@@ -147,6 +147,47 @@ cat schema.sql | python -m ddl_lineage -
 
 ---
 
+## Web Interface
+
+A full interactive UI on top of the same analyzer — paste SQL or scan a live database, get an auto-laid-out lineage graph, browse objects/relationships/execution order, and export the result. Flask backend + React (Gravity UI) frontend, available in **English and Russian**.
+
+![DDL Lineage web interface — light theme](docs/screenshots/overview-light.png)
+
+| Feature | Detail |
+|---|---|
+| **Live lineage graph** | Pannable/zoomable graph of the parsed schema, colored by edge type, with an inline object/edge/cycle readout |
+| **SQL editor** | Monaco-based editor with syntax highlighting and one-click formatting |
+| **Database connections** | Scan a live PostgreSQL/MySQL database to extract its DDL directly, no manual copy-paste |
+| **Projects & history** | Save named analyses, browse version history, diff any two versions |
+| **Localization** | English / Russian, switchable from Settings — JSON-based language packs (`web/frontend/src/language/`), with additional languages registerable at runtime |
+| **Export** | Copy as Mermaid or JSON |
+
+<details>
+<summary>More screenshots — dark theme, Russian localization, data tables</summary>
+<br>
+
+| Dark theme | Русский |
+|---|---|
+| ![Dark theme](docs/screenshots/overview-dark.png) | ![Russian localization](docs/screenshots/overview-ru.png) |
+
+![Objects, relationships and execution order tables](docs/screenshots/detail-tables.png)
+
+</details>
+
+### Running it
+
+```bash
+cd web
+pip install -r backend/requirements.txt
+cd frontend && npm install && cd ..
+
+python run.py   # starts the Flask API (:5001) and the React dev server (:3000)
+```
+
+See [`web/README.md`](web/README.md) for architecture details and the API reference.
+
+---
+
 ## Project layout
 
 ```
@@ -159,12 +200,17 @@ ddl_lineage/
 │   ├── graph.py          Graph algorithms: cycles, impact, topo sort
 │   ├── analyzer.py       DDLLineageAnalyzer — main class + output renderers
 │   └── cli.py            CLI argument parsing
+├── web/
+│   ├── backend/          Flask API (analysis, DB connectors, project store)
+│   ├── frontend/         React + Gravity UI single-page app (src/language/ holds i18n JSON packs)
+│   └── run.py            Runs backend + frontend dev servers together
 ├── tests/
 │   └── test_analyzer.py  Pytest test suite
 ├── examples/
 │   ├── ecommerce.sql     Full e-commerce PostgreSQL schema
 │   ├── cycles.sql        Circular dependency example
 │   └── mysql_style.sql   MySQL / stored procedure example
+├── docs/screenshots/      Web interface screenshots used in this README
 ├── pyproject.toml
 └── README.md
 ```
