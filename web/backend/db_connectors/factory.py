@@ -2,17 +2,20 @@
 Database connector factory.
 """
 
-from typing import Dict, Any
+from __future__ import annotations
+
+from typing import Any
+
 from . import DatabaseConnector
-from .postgresql import PostgreSQLConnector
 from .mysql import MySQLConnector
+from .postgresql import PostgreSQLConnector
 
 
 class DatabaseConnectorFactory:
     """Factory for creating database connectors."""
 
     @staticmethod
-    def create_connector(db_type: str, config: Dict[str, Any]) -> DatabaseConnector:
+    def create_connector(db_type: str, config: dict[str, Any]) -> DatabaseConnector:
         """Create a database connector instance."""
         if db_type.lower() == 'postgresql':
             return PostgreSQLConnector(config)

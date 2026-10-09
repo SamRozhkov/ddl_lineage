@@ -4,9 +4,7 @@ tests/test_analyzer.py
 Unit tests for DDLLineageAnalyzer.
 """
 
-import pytest
 from ddl_lineage import DDLLineageAnalyzer
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

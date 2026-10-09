@@ -5,17 +5,19 @@ Flask application for interactive SQL lineage visualization
 
 from __future__ import annotations
 
-from datetime import datetime
-from flask import Flask, render_template, request, jsonify
 import sys
+from datetime import datetime
 from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request
 
 # Add parent directories to path to import ddl_lineage
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from ddl_lineage import DDLLineageAnalyzer
 from db_connectors import DatabaseConnectorFactory
 from project_store import ProjectStore
+
+from ddl_lineage import DDLLineageAnalyzer
 
 FRONTEND_BUILD_DIR = Path(__file__).parent.parent / 'frontend' / 'build'
 
@@ -156,13 +158,13 @@ def project_history_entry(project_name, entry_id):
 def analyze():
     """
     Analyze DDL and return lineage data.
-    
+
     Request JSON:
     {
         "ddl": "CREATE TABLE ...",
         "format": "json|mermaid|dot"
     }
-    
+
     Response:
     {
         "success": true,
@@ -185,14 +187,14 @@ def analyze():
                 'success': False,
                 'error': 'Missing DDL content'
             }), 400
-        
+
         ddl = payload.get('ddl', '').strip()
         if not ddl:
             return jsonify({
                 'success': False,
                 'error': 'DDL content is empty'
             }), 400
-        
+
         # Analyze
         analyzer = DDLLineageAnalyzer()
         result = analyzer.analyze(ddl)
@@ -222,9 +224,9 @@ def analyze():
             'mermaid': _to_mermaid(result),
             'error': None
         }
-        
+
         return jsonify(response), 200
-        
+
     except Exception as e:
         return jsonify({
             'success': False,
@@ -236,7 +238,7 @@ def analyze():
 def get_impact(obj_name):
     """
     Get impact analysis for a specific object.
-    
+
     Request JSON:
     {
         "ddl": "CREATE TABLE ...",
@@ -247,14 +249,14 @@ def get_impact(obj_name):
     try:
         payload = request.get_json() or {}
         ddl = payload.get('ddl', '').strip()
-        
+
         if not ddl:
             return jsonify({'success': False, 'error': 'DDL is required'}), 400
-        
+
         analyzer = DDLLineageAnalyzer()
         analyzer.analyze(ddl)
         impact = analyzer.impact(obj_name)
-        
+
         return jsonify({
             'success': True,
             'target': obj_name,
@@ -262,7 +264,7 @@ def get_impact(obj_name):
             'downstream': list(impact.downstream),
             'summary': impact.summary()
         }), 200
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -271,7 +273,7 @@ def get_impact(obj_name):
 def get_topo():
     """
     Get topological sort order.
-    
+
     Request JSON:
     {
         "ddl": "CREATE TABLE ...",
@@ -282,19 +284,19 @@ def get_topo():
     try:
         payload = request.get_json() or {}
         ddl = payload.get('ddl', '').strip()
-        
+
         if not ddl:
             return jsonify({'success': False, 'error': 'DDL is required'}), 400
-        
+
         analyzer = DDLLineageAnalyzer()
         analyzer.analyze(ddl)
         order = analyzer.topo_sort()
-        
+
         return jsonify({
             'success': True,
             'order': order
         }), 200
-        
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -308,7 +310,7 @@ def _to_mermaid(result: dict) -> str:
 def connect_db():
     """
     Connect to database and extract DDL.
-    
+
     Request JSON:
     {
         "type": "postgresql|mysql",
@@ -320,7 +322,7 @@ def connect_db():
         "schema": "public",
         "objects": ["table1", "table2"]  // optional, if not provided - extract all
     }
-    
+
     Response:
     {
         "success": true,
@@ -330,13 +332,13 @@ def connect_db():
     """
     if request.method == 'OPTIONS':
         return '', 200
-    
+
     try:
         payload = request.get_json()
         if not payload:
             return jsonify({'success': False, 'error': 'Missing connection data'}), 400
         payload = dict(payload)
-        
+
         required_fields = ['type', 'host', 'database', 'username', 'password']
         for field in required_fields:
             if field not in payload:
@@ -344,10 +346,10 @@ def connect_db():
 
         if 'port' not in payload or payload['port'] in (None, ''):
             payload['port'] = 5432 if payload['type'].lower() == 'postgresql' else 3306
-        
+
         # Create database connector using factory
         connector = DatabaseConnectorFactory.create_connector(payload['type'], payload)
-        
+
         # Extract DDL
         with connector:
             ddl = connector.extract_ddl(payload.get('objects'))
@@ -369,13 +371,13 @@ def connect_db():
                 'analysis': None,
             }
             project_store.save_state(project_name, state, action='db_connect')
-        
+
         return jsonify({
             'success': True,
             'ddl': ddl,
             'error': None
         }), 200
-        
+
     except Exception as e:
         return jsonify({
             'success': False,

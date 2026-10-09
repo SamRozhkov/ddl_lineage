@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 
 from .models import LineageEdge
 
-
 # ---------------------------------------------------------------------------
 # Adjacency helpers
 # ---------------------------------------------------------------------------

@@ -9,29 +9,29 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 
+from .graph import ImpactResult, detect_cycles, impact_analysis, topological_sort
 from .models import Column, ColumnLineage, DDLObject, LineageEdge
 from .parser import (
+    _QUALIFIED_IDENT,
     SQL_KW,
     _cte_names,
     _extract_function_body,
     _extract_object_name,
     _extract_select_list,
-    _QUALIFIED_IDENT,
     _extract_table_definition_body,
-    _parse_ctas_columns,
     _parse_column_lineage,
+    _parse_ctas_columns,
     _parse_foreign_keys,
     _parse_returns_table_columns,
     _parse_select_columns,
     _parse_table_columns,
     _read_references,
     _remove_comments,
-    _strip_create_options,
     _select_expression_name,
-    _split_top_level_csv,
     _split_statements,
+    _split_top_level_csv,
+    _strip_create_options,
 )
-from .graph import detect_cycles, impact_analysis, topological_sort, ImpactResult
 
 # ---------------------------------------------------------------------------
 # Write-statement patterns  (source, detail label)

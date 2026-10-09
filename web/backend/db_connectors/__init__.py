@@ -2,18 +2,20 @@
 Database connector modules for DDL extraction.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict, Any
-import sqlalchemy as sa
+from typing import Any
+
 from sqlalchemy.engine import Engine
 
 
 class DatabaseConnector(ABC):
     """Abstract base class for database connectors."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
-        self.engine: Optional[Engine] = None
+        self.engine: Engine | None = None
 
     @abstractmethod
     def connect(self) -> None:
@@ -21,7 +23,7 @@ class DatabaseConnector(ABC):
         pass
 
     @abstractmethod
-    def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
+    def extract_ddl(self, objects: list[str] | None = None) -> str:
         """Extract DDL from the database."""
         pass
 
@@ -44,5 +46,6 @@ class DatabaseConnector(ABC):
         self.disconnect()
 
 
-# Import factory for easy access
-from .factory import DatabaseConnectorFactory
+# Re-export for `from db_connectors import DatabaseConnectorFactory`; imported last
+# because factory.py imports DatabaseConnector from this module
+from .factory import DatabaseConnectorFactory  # noqa: E402, F401

@@ -58,6 +58,8 @@ jobs:
             web/backend/requirements.txt
       - name: Install
         run: pip install -e ".[dev]" -r web/backend/requirements.txt
+      - name: Ruff
+        run: ruff check . --exclude web/frontend
       - name: Tests
         run: |
           pytest -rs | tee pytest.log

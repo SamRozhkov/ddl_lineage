@@ -2,10 +2,14 @@
 MySQL database connector.
 """
 
-from typing import List, Optional, Any
+from __future__ import annotations
+
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import URL
+
 from . import DatabaseConnector
 
 
@@ -29,7 +33,7 @@ class MySQLConnector(DatabaseConnector):
             database=config['database'],
         )
 
-    def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
+    def extract_ddl(self, objects: list[str] | None = None) -> str:
         """
         Extract DDL of tables, views, procedures and functions of the database
         via ``SHOW CREATE …``, so views and routines keep their definitions
@@ -73,7 +77,7 @@ class MySQLConnector(DatabaseConnector):
         return '\n\n'.join(ddl_statements)
 
     @staticmethod
-    def _show_create(conn: sa.Connection, kind: str, database: str, name: str) -> Optional[str]:
+    def _show_create(conn: sa.Connection, kind: str, database: str, name: str) -> str | None:
         """``SHOW CREATE <kind>``; None when the definition is not visible to this user."""
         qualified = f"{_quote_ident(database)}.{_quote_ident(name)}"
         row = conn.exec_driver_sql(f"SHOW CREATE {kind} {qualified}").mappings().first()

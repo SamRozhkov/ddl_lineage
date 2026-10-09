@@ -2,12 +2,15 @@
 PostgreSQL database connector.
 """
 
-from typing import List, Optional, Any
+from __future__ import annotations
+
+from typing import Any
+
 import sqlalchemy as sa
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import URL
-from . import DatabaseConnector
 
+from . import DatabaseConnector
 
 # Objects owned by an extension (e.g. pg_stat_statements) are not user DDL
 _NOT_FROM_EXTENSION = """
@@ -103,7 +106,7 @@ class PostgreSQLConnector(DatabaseConnector):
             database=config['database'],
         )
 
-    def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
+    def extract_ddl(self, objects: list[str] | None = None) -> str:
         """
         Extract DDL of tables, views, materialized views, functions and
         procedures of one schema (``config['schema']``, default ``public``).
@@ -139,11 +142,11 @@ class PostgreSQLConnector(DatabaseConnector):
         return '\n\n'.join(ddl_statements)
 
     @staticmethod
-    def _table_ddl(conn: sa.Connection, tables: list) -> List[str]:
+    def _table_ddl(conn: sa.Connection, tables: list) -> list[str]:
         if not tables:
             return []
         oids = [t.oid for t in tables]
-        columns: dict[int, List[str]] = {oid: [] for oid in oids}
+        columns: dict[int, list[str]] = {oid: [] for oid in oids}
         for col in conn.execute(text(_COLUMNS_SQL), {'oids': oids}):
             line = f"{col.name} {col.type}"
             if col.not_null:

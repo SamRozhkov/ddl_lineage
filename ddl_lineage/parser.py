@@ -10,6 +10,7 @@ Supports: PostgreSQL, MySQL/MariaDB, SQLite, T-SQL (SQL Server),
 from __future__ import annotations
 
 import re
+
 from .models import Column, ColumnLineage, LineageEdge
 
 # ---------------------------------------------------------------------------

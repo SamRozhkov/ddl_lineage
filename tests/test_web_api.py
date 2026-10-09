@@ -65,3 +65,17 @@ def test_analyze_rejects_empty_ddl(api):
     client, _ = api
     resp = client.post("/api/analyze", json={"ddl": "   "})
     assert resp.status_code == 400
+
+
+def test_extended_app_analyze(tmp_path, monkeypatch):
+    """web/app_extended.py (used by web/launcher.py) shares the analyzer output."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from web import app_extended
+
+    monkeypatch.setitem(app_extended.app.config, "RESULTS_FOLDER", tmp_path)
+    client = app_extended.app.test_client()
+    resp = client.post("/api/analyze", json={"ddl": DDL})
+    assert resp.status_code == 200, resp.json
+    assert resp.json["mermaid"] == DDLLineageAnalyzer().to_mermaid(DDLLineageAnalyzer().analyze(DDL))
+    assert resp.json["data"]["flows"]
+    assert "stage_orders" in resp.json["text_report"]

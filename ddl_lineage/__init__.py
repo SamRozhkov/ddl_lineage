@@ -10,8 +10,12 @@ Quick start
 """
 
 from .analyzer import DDLLineageAnalyzer
-from .models import DDLObject, LineageEdge, Column, ColumnLineage
-from .parser import parseDDL, _remove_comments, _split_statements
+from .models import Column, ColumnLineage, DDLObject, LineageEdge
+from .parser import (  # noqa: F401  (kept for old imports)
+    _remove_comments,
+    _split_statements,
+    parseDDL,
+)
 
 __all__ = [
     "DDLLineageAnalyzer",

@@ -3,10 +3,11 @@
 Script to run both backend and frontend servers.
 """
 
+import os
 import subprocess
 import sys
-import os
 import time
+
 
 def run_backend():
     """Run the Flask backend server."""
