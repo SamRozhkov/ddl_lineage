@@ -2,7 +2,7 @@
 MySQL database connector.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 import sqlalchemy as sa
 from sqlalchemy import bindparam, text
 from sqlalchemy.engine import URL
@@ -30,73 +30,58 @@ class MySQLConnector(DatabaseConnector):
         )
 
     def extract_ddl(self, objects: Optional[List[str]] = None) -> str:
-        """Extract DDL from MySQL database."""
+        """
+        Extract DDL of tables, views, procedures and functions of the database
+        via ``SHOW CREATE …``, so views and routines keep their definitions
+        and the analyzer can build READ/WRITE lineage.
+        """
         if not self.engine:
             raise ConnectionError("Not connected to database")
 
         database = self.config['database']
-        object_filter = ""
         params: dict[str, Any] = {'database': database}
         if objects:
-            object_filter = " AND TABLE_NAME IN :objects"
             params['objects'] = list(objects)
 
+        def query(sql: str, name_column: str) -> sa.TextClause:
+            object_filter = f" AND {name_column} IN :objects" if objects else ""
+            stmt = text(sql + object_filter + f" ORDER BY {name_column}")
+            return stmt.bindparams(bindparam('objects', expanding=True)) if objects else stmt
+
         ddl_statements = []
-
         with self.engine.connect() as conn:
-            # Extract tables and views
-            query = text(f"""
-            SELECT
-                TABLE_SCHEMA,
-                TABLE_NAME,
-                TABLE_TYPE,
-                CONCAT(
-                    'CREATE ',
-                    CASE WHEN TABLE_TYPE = 'VIEW' THEN 'VIEW' ELSE 'TABLE' END,
-                    ' ', TABLE_SCHEMA, '.', TABLE_NAME, ' (',
-                    GROUP_CONCAT(
-                        CONCAT(
-                            COLUMN_NAME, ' ', DATA_TYPE,
-                            CASE WHEN IS_NULLABLE = 'NO' THEN ' NOT NULL' ELSE '' END,
-                            CASE WHEN COLUMN_DEFAULT IS NOT NULL THEN CONCAT(' DEFAULT ', COLUMN_DEFAULT) ELSE '' END
-                        ) SEPARATOR ', '
-                    ),
-                    ')'
-                ) as ddl
-            FROM information_schema.COLUMNS c
-            JOIN information_schema.TABLES t ON c.TABLE_NAME = t.TABLE_NAME
-                AND c.TABLE_SCHEMA = t.TABLE_SCHEMA
-            WHERE t.TABLE_SCHEMA = :database {object_filter}
-            GROUP BY TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE
-            ORDER BY TABLE_NAME;
-            """)
-            if objects:
-                query = query.bindparams(bindparam('objects', expanding=True))
+            tables = conn.execute(query(
+                "SELECT TABLE_NAME AS name, TABLE_TYPE AS kind FROM information_schema.TABLES"
+                " WHERE TABLE_SCHEMA = :database", 'TABLE_NAME',
+            ), params).all()
+            # Tables first, then views: views may read from tables and other views
+            for row in sorted(tables, key=lambda r: r.kind == 'VIEW'):
+                kind = 'VIEW' if row.kind == 'VIEW' else 'TABLE'
+                ddl = self._show_create(conn, kind, database, row.name)
+                if ddl:
+                    ddl_statements.append(ddl)
 
-            result = conn.execute(query, params)
-            for row in result:
-                ddl_statements.append(row.ddl)
-
-            # Extract foreign keys
-            fk_object_filter = " AND k.TABLE_NAME IN :objects" if objects else ""
-            fk_query = text(f"""
-            SELECT
-                CONCAT(
-                    'ALTER TABLE ', k.TABLE_SCHEMA, '.', k.TABLE_NAME,
-                    ' ADD CONSTRAINT ', k.CONSTRAINT_NAME,
-                    ' FOREIGN KEY (', GROUP_CONCAT(k.COLUMN_NAME SEPARATOR ', '),
-                    ') REFERENCES ', k.REFERENCED_TABLE_SCHEMA, '.', k.REFERENCED_TABLE_NAME,
-                    ' (', GROUP_CONCAT(k.REFERENCED_COLUMN_NAME SEPARATOR ', '), ');'
-                ) as fk_ddl
-            FROM information_schema.KEY_COLUMN_USAGE k
-            WHERE k.REFERENCED_TABLE_NAME IS NOT NULL AND k.TABLE_SCHEMA = :database {fk_object_filter}
-            GROUP BY k.TABLE_SCHEMA, k.TABLE_NAME, k.CONSTRAINT_NAME, k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME;
-            """)
-            if objects:
-                fk_query = fk_query.bindparams(bindparam('objects', expanding=True))
-
-            fk_result = conn.execute(fk_query, params)
-            for row in fk_result:
-                ddl_statements.append(row.fk_ddl)
+            routines = conn.execute(query(
+                "SELECT ROUTINE_NAME AS name, ROUTINE_TYPE AS kind FROM information_schema.ROUTINES"
+                " WHERE ROUTINE_SCHEMA = :database", 'ROUTINE_NAME',
+            ), params).all()
+            for row in routines:
+                ddl = self._show_create(conn, row.kind, database, row.name)
+                if ddl:
+                    ddl_statements.append(ddl)
 
         return '\n\n'.join(ddl_statements)
+
+    @staticmethod
+    def _show_create(conn: sa.Connection, kind: str, database: str, name: str) -> Optional[str]:
+        """``SHOW CREATE <kind>``; None when the definition is not visible to this user."""
+        qualified = f"{_quote_ident(database)}.{_quote_ident(name)}"
+        row = conn.exec_driver_sql(f"SHOW CREATE {kind} {qualified}").mappings().first()
+        if not row:
+            return None
+        ddl = row.get(f"Create {kind.title()}")
+        return ddl.strip().rstrip(';') + ';' if ddl else None
+
+
+def _quote_ident(name: str) -> str:
+    return '`' + name.replace('`', '``') + '`'

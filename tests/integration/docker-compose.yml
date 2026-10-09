@@ -1,0 +1,35 @@
+# Throwaway databases for the connector integration tests (the tests load
+# fixtures/*.sql themselves).
+#
+#   docker compose -f tests/integration/docker-compose.yml up -d --wait
+#   DDL_LINEAGE_TEST_PG=postgresql://lineage:lineage@127.0.0.1:55432/lineage_test \
+#   DDL_LINEAGE_TEST_MYSQL=mysql://root:lineage@127.0.0.1:53306/lineage_it \
+#       python -m pytest tests/integration
+#   docker compose -f tests/integration/docker-compose.yml down -v
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lineage
+      POSTGRES_PASSWORD: lineage
+      POSTGRES_DB: lineage_test
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lineage -d lineage_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: lineage
+    ports:
+      - "53306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -plineage --silent"]
+      interval: 2s
+      timeout: 3s
+      retries: 60

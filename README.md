@@ -17,6 +17,7 @@ users ──[FK]──▶ orders ──[FK]──▶ order_items
 |---|---|
 | **Table-level lineage** | FK, READ (FROM/JOIN), WRITE (INSERT/UPDATE/DELETE/MERGE/TRUNCATE), INHERITS |
 | **Column-level lineage** | Parses `INSERT INTO t(c1,c2) SELECT a,b FROM src` |
+| **Function-body data flow** | Statement-level `source → target` flows inside functions/procedures, including tables created in the body (`CREATE [TEMP] TABLE … AS SELECT`) |
 | **Impact analysis** | Upstream + downstream BFS for any object |
 | **Cycle detection** | DFS — warns on circular view/function dependencies |
 | **Topological sort** | Safe execution order of DDL objects |
@@ -104,6 +105,8 @@ cat schema.sql | python -m ddl_lineage -
       "name": "orders",
       "type": "TABLE",           // TABLE | VIEW | MATERIALIZED_VIEW | FUNCTION | PROCEDURE
       "schema": "public",
+      "temporary": false,
+      "parent": "",              // function/procedure whose body creates this table
       "columns": [
         { "name": "id",      "type": "SERIAL",      "pk": true,  "nullable": false },
         { "name": "user_id", "type": "INTEGER",     "pk": false, "nullable": false,
@@ -124,6 +127,10 @@ cat schema.sql | python -m ddl_lineage -
     }
   ],
   "col_lineage": [ ... ],   // flat list of all column mappings
+  "flows": [                // statement-level data flow inside function bodies
+    { "source": "order_items", "target": "payments", "type": "WRITE",
+      "via": "process_order", "details": "INSERT" }
+  ],
   "cycles":      [],        // [[\"v_a\", \"v_b\", \"v_c\", \"v_a\"]]
   "topo_order":  ["users", "categories", "products", "orders", ...],
   "stats": {
@@ -144,6 +151,16 @@ cat schema.sql | python -m ddl_lineage -
 | `READ` | Object reads from another via `FROM` / `JOIN` |
 | `WRITE` | Object modifies another via `INSERT` / `UPDATE` / `DELETE` / `MERGE` / `TRUNCATE` |
 | `INHERITS` | Table inheritance (`INHERITS(parent)` or `LIKE parent`) |
+
+### Data flows inside functions
+
+`edges` say *which* tables a function touches; `flows` say *how data moves* between them, statement by statement:
+
+- a statement that reads `A` and writes/creates `B` gives `A → B` (`WRITE`);
+- a write with no source (`DELETE FROM carts`, `UPDATE t SET x = 0`) flows out of the function itself: `fn → carts`;
+- a read with no target (`RETURN (SELECT …)`, `SELECT … INTO var`) flows into the function: `stage → fn` (`READ`).
+
+Tables created inside a function body become objects with `parent` set to that function (a top-level `CREATE TABLE` of the same name takes precedence). In the web UI each function is drawn as a group containing the tables it creates, with links following `flows`.
 
 ---
 
@@ -205,7 +222,8 @@ ddl_lineage/
 │   ├── frontend/         React + Gravity UI single-page app (src/language/ holds i18n JSON packs)
 │   └── run.py            Runs backend + frontend dev servers together
 ├── tests/
-│   └── test_analyzer.py  Pytest test suite
+│   ├── test_analyzer.py  Pytest test suite
+│   └── integration/      Live PostgreSQL/MySQL connector tests (docker-compose + fixtures)
 ├── examples/
 │   ├── ecommerce.sql     Full e-commerce PostgreSQL schema
 │   ├── cycles.sql        Circular dependency example
@@ -225,6 +243,25 @@ pytest -v                       # verbose
 pytest --cov=ddl_lineage        # with coverage
 pytest tests/test_analyzer.py::TestImpactAnalysis  # single class
 ```
+
+### Database connector integration tests
+
+`tests/integration` connects to live PostgreSQL and MySQL, loads a test shop schema
+(tables, composite FKs, inheritance, views on views, a materialized view, functions and
+procedures — one of them creating a temp table), extracts the DDL through the web
+backend's connectors and checks the resulting objects, edges and data flows against a
+hand-written expected lineage. It also drives `/api/connect` → `/api/analyze`.
+
+```bash
+docker compose -f tests/integration/docker-compose.yml up -d --wait
+export DDL_LINEAGE_TEST_PG=postgresql://lineage:lineage@127.0.0.1:55432/lineage_test
+export DDL_LINEAGE_TEST_MYSQL=mysql://root:lineage@127.0.0.1:53306/lineage_it
+pytest tests/integration
+docker compose -f tests/integration/docker-compose.yml down -v
+```
+
+Each backend is skipped when its variable is unset. Loading a fixture recreates only
+the `lineage_it` / `lineage_it_noise` schemas (databases in MySQL).
 
 ---
 
