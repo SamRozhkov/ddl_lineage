@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python ${{ matrix.python }} (unit + live DB)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: lineage
+          POSTGRES_PASSWORD: lineage
+          POSTGRES_DB: lineage_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lineage -d lineage_test"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: lineage
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -plineage --silent"
+          --health-interval 2s --health-timeout 3s --health-retries 60
+
+    env:
+      DDL_LINEAGE_TEST_PG: postgresql://lineage:lineage@127.0.0.1:5432/lineage_test
+      DDL_LINEAGE_TEST_MYSQL: mysql://root:lineage@127.0.0.1:3306/lineage_it
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            web/backend/requirements.txt
+      - name: Install
+        run: pip install -e ".[dev]" -r web/backend/requirements.txt
+      - name: Tests
+        run: |
+          pytest -rs | tee pytest.log
+          # The live-DB tests must actually run here, not be skipped for a missing DSN
+          ! grep -E "SKIPPED.*DDL_LINEAGE_TEST_" pytest.log
+
+  mermaid:
+    name: Mermaid output renders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Generate diagrams
+        run: |
+          mkdir -p mmd
+          for f in examples/*.sql tests/integration/fixtures/*.sql; do
+            python -m ddl_lineage "$f" -f mermaid > "mmd/$(basename "$f" .sql).mmd"
+          done
+          chmod -R a+rwx mmd
+      - name: Render with mermaid-cli
+        run: |
+          for f in mmd/*.mmd; do
+            echo "::group::$f"
+            docker run --rm -v "$PWD/mmd:/data" minlag/mermaid-cli:12.0.0 \
+              -i "/data/$(basename "$f")" -o "/data/$(basename "$f" .mmd).svg"
+            echo "::endgroup::"
+          done
+
+  frontend:
+    name: Frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npm run build

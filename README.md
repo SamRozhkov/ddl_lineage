@@ -263,6 +263,12 @@ docker compose -f tests/integration/docker-compose.yml down -v
 Each backend is skipped when its variable is unset. Loading a fixture recreates only
 the `lineage_it` / `lineage_it_noise` schemas (databases in MySQL).
 
+CI (`.github/workflows/ci.yml`) runs everything on every push and pull request: the
+unit and live-database tests on Python 3.10 and 3.12 (PostgreSQL and MySQL as service
+containers; the job fails if the integration tests were skipped), renders the Mermaid
+output of the examples and fixtures with mermaid-cli, and type-checks and builds the
+frontend.
+
 ---
 
 ## Supported dialects

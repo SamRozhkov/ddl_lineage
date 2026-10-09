@@ -22,5 +22,4 @@ web/backend/projects/
 web/frontend/node_modules/
 web/frontend/build/
 web/frontend/.cache/
-web/frontend/.npmrc
 *.tsbuildinfo
