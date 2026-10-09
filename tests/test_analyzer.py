@@ -354,6 +354,22 @@ class TestCatalogStyleDDL:
         assert column(r, "order_items", "created_at")["default"] == "now()"
         assert column(r, "order_items", "status")["nullable"] is False
 
+    def test_default_null_is_no_default(self):
+        _, r = make("CREATE TABLE t (a char(2) DEFAULT NULL, b int DEFAULT '0');")
+        assert column(r, "t", "a")["default"] == ""
+        assert column(r, "t", "b")["default"] == "0"
+
+    def test_view_column_types_through_parenthesised_mysql_joins(self):
+        ddl = """
+        CREATE TABLE `orders` (`id` int NOT NULL, `customer_id` int NOT NULL, PRIMARY KEY (`id`));
+        CREATE TABLE `customers` (`id` int NOT NULL, `email` varchar(255) NOT NULL);
+        CREATE VIEW `active_orders` AS select `o`.`id` AS `id`,`c`.`email` AS `email`
+            from (`orders` `o` join `customers` `c` on((`c`.`id` = `o`.`customer_id`)));
+        """
+        _, r = make(ddl)
+        view = next(o for o in r["objects"] if o["name"] == "active_orders")
+        assert [(c["name"], c["type"]) for c in view["columns"]] == [("id", "INT"), ("email", "VARCHAR(255)")]
+
     def test_table_level_primary_key_and_unique(self):
         _, r = make(PG_CATALOG_DDL)
         assert column(r, "customers", "id")["pk"] is True
@@ -487,6 +503,71 @@ class TestMySQLRoutines:
         _, r = make(ddl)
         assert edge_exists(r, "checkout", "cart_items", "WRITE")
         assert edge_exists(r, "checkout", "cart", "WRITE")
+
+
+ORACLE_DDL = """
+CREATE TABLE src (id NUMBER(10) PRIMARY KEY, amount NUMBER(12,2));
+CREATE TABLE tgt (id NUMBER(10), amount NUMBER(12,2));
+CREATE TABLE audit_log (msg VARCHAR2(200));
+
+CREATE OR REPLACE PROCEDURE load_tgt (p_min IN NUMBER, p_scale IN NUMBER(5,2)) IS
+  v_count NUMBER := 0;
+  CURSOR c_src IS SELECT id, amount FROM src WHERE amount > p_min;
+BEGIN
+  FOR r IN c_src LOOP
+    INSERT INTO tgt (id, amount) VALUES (r.id, r.amount * p_scale);
+    v_count := v_count + 1;
+  END LOOP;
+  IF v_count = 0 THEN
+    INSERT INTO audit_log (msg) VALUES ('nothing loaded');
+  END IF;
+END load_tgt;
+/
+
+CREATE OR REPLACE FUNCTION tgt_total RETURN NUMBER AS
+  v_total NUMBER;
+BEGIN
+  SELECT SUM(amount) INTO v_total FROM tgt;
+  RETURN v_total;
+END;
+/
+CREATE VIEW big_src AS SELECT id FROM src WHERE amount > 100;
+"""
+
+TSQL_DDL = """
+CREATE PROCEDURE refresh_stats AS
+SET NOCOUNT ON;
+DELETE FROM stats;
+CREATE TABLE stats (n INT);
+CREATE VIEW stats_view AS SELECT n FROM stats;
+"""
+
+
+class TestOracleRoutines:
+    def test_declarations_do_not_split_the_procedure(self):
+        _, r = make(ORACLE_DDL)
+        assert edge_exists(r, "load_tgt", "src", "READ")      # read in the cursor declaration
+        assert edge_exists(r, "load_tgt", "tgt", "WRITE")
+        assert edge_exists(r, "load_tgt", "audit_log", "WRITE")
+
+    def test_function_returning_scalar(self):
+        _, r = make(ORACLE_DDL)
+        fn = next(o for o in r["objects"] if o["name"] == "tgt_total")
+        assert fn["type"] == "FUNCTION"
+        assert edge_exists(r, "tgt_total", "tgt", "READ")
+
+    def test_slash_terminators(self):
+        _, r = make(ORACLE_DDL)
+        names = {o["name"] for o in r["objects"]}
+        assert {"src", "tgt", "audit_log", "load_tgt", "tgt_total", "big_src"} <= names
+        assert edge_exists(r, "big_src", "src", "READ")
+        assert "" not in names
+
+    def test_tsql_procedure_without_begin_does_not_swallow_the_script(self):
+        _, r = make(TSQL_DDL)
+        names = {o["name"] for o in r["objects"]}
+        assert {"refresh_stats", "stats", "stats_view"} <= names
+        assert edge_exists(r, "stats_view", "stats", "READ")
 
 
 # ---------------------------------------------------------------------------

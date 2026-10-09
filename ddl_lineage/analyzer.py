@@ -365,7 +365,7 @@ class DDLLineageAnalyzer:
     def _select_sources(self, stmt: str) -> dict[str, str]:
         sources: dict[str, str] = {}
         for m in re.finditer(
-            r"\b(?:FROM|JOIN)\s+(?:`?\"?\w+\"?`?\.)?`?\"?(\w+)\"?`?"
+            r"\b(?:FROM|JOIN)[\s(]+(?:`?\"?\w+\"?`?\.)?`?\"?(\w+)\"?`?"
             r"(?:\s+(?:AS\s+)?`?\"?(\w+)\"?`?)?",
             stmt,
             re.IGNORECASE,

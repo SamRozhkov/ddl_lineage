@@ -50,6 +50,43 @@ def _remove_comments(sql: str) -> str:
     return sql
 
 
+# Oracle PL/SQL routine header, up to the IS / AS that opens its declarations
+_PLSQL_HEAD_RE = re.compile(
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?(?:PROCEDURE|FUNCTION)\s+"
+    r"(?:[\w$#\"]+\s*\.\s*)?[\w$#\"]+\s*"
+    r"(?:\((?:[^()]|\([^()]*\))*\)\s*)?"
+    r"(?:RETURN\s+[\w.%]+(?:\s*\([^)]*\))?\s*)?"
+    r"(?:(?:AUTHID\s+\w+|DETERMINISTIC|PIPELINED|PARALLEL_ENABLE|RESULT_CACHE)\s*)*"
+    r"(?P<kw>IS|AS)\b",
+    re.IGNORECASE,
+)
+# What may follow AS in PL/SQL (T-SQL's "AS SET NOCOUNT ON; …" must not match)
+_PLSQL_AFTER_AS_RE = re.compile(
+    r"\s*(?:BEGIN\b|CURSOR\b|TYPE\b|PRAGMA\b|PROCEDURE\b|FUNCTION\b"
+    r"|[A-Za-z_]\w*\s+(?:CONSTANT\s+)?[A-Za-z_][\w.%]*(?:\s*\([^)]*\))?\s*(?:;|:=|NOT\s+NULL|DEFAULT\b))",
+    re.IGNORECASE,
+)
+
+
+def _plsql_body_start(text: str, pos: int = 0) -> int | None:
+    """
+    Index just after the IS / AS of an Oracle-style routine header starting at
+    *pos*, or None (PostgreSQL ``AS $$``, MySQL, T-SQL ``AS <statement>``…).
+    """
+    m = _PLSQL_HEAD_RE.match(text, pos)
+    if not m:
+        return None
+    rest = text[m.end():]
+    if re.match(r"\s*(?:\$|'|LANGUAGE\b|EXTERNAL\b)", rest, re.IGNORECASE):
+        return None
+    if m.group("kw").upper() == "AS" and not _PLSQL_AFTER_AS_RE.match(rest):
+        return None
+    return m.end()
+
+
+_DOLLAR_TAG_RE = re.compile(r"\$([^$]*)\$")
+_SLASH_LINE_RE = re.compile(r"[ \t]*/[ \t]*(?:\n|$)")
+
 # Block keywords for _split_statements. A transaction ``BEGIN;`` / ``BEGIN
 # TRANSACTION`` is not a block, and ``END IF`` / ``END LOOP`` … close blocks
 # whose openers are not counted.
@@ -79,13 +116,45 @@ def _split_statements(sql: str, track_blocks: bool = True) -> list[str]:
     in_sq = False
     depth = 0
     blocks = 0
+    pending_begin = False   # PL/SQL IS/AS already opened the block its BEGIN belongs to
+    at_start = True
     i = 0
+
+    def flush() -> None:
+        nonlocal cur, at_start
+        if "".join(cur).strip():
+            parts.append("".join(cur))
+        cur = []
+        at_start = True
 
     while i < len(sql):
         ch = sql[i]
 
+        if track_blocks and not in_dollar and not in_sq and (i == 0 or sql[i - 1] == "\n"):
+            # SQL*Plus "/" line ends the statement
+            slash = _SLASH_LINE_RE.match(sql, i)
+            if slash:
+                flush()
+                depth = blocks = 0
+                pending_begin = False
+                i = slash.end()
+                continue
+
+        if track_blocks and at_start and not in_dollar and not in_sq and ch.isalpha():
+            at_start = False
+            body_start = _plsql_body_start(sql, i)
+            if body_start is not None:
+                cur.append(sql[i:body_start])
+                i = body_start
+                blocks += 1
+                pending_begin = True
+                continue
+
+        if not ch.isspace():
+            at_start = False
+
         if not in_dollar and not in_sq:
-            m = re.match(r"\$([^$]*)\$", sql[i:])
+            m = _DOLLAR_TAG_RE.match(sql, i) if ch == "$" else None
             if m:
                 in_dollar, dollar_tag = True, m.group(0)
                 cur.append(dollar_tag)
@@ -95,7 +164,10 @@ def _split_statements(sql: str, track_blocks: bool = True) -> list[str]:
                 word = _BLOCK_WORD_RE.match(sql, i)
                 if word:
                     if word.group("open"):
-                        blocks += 1
+                        if pending_begin and word.group(0).upper() == "BEGIN":
+                            pending_begin = False
+                        else:
+                            blocks += 1
                     elif word.group("close"):
                         blocks = max(0, blocks - 1)
                     cur.append(word.group(0))
@@ -110,6 +182,7 @@ def _split_statements(sql: str, track_blocks: bool = True) -> list[str]:
             elif ch == ";" and depth == 0 and blocks == 0:
                 parts.append("".join(cur))
                 cur = []
+                at_start = True
                 i += 1
                 continue
 
@@ -263,6 +336,11 @@ def _extract_function_body(stmt: str) -> str:
     m = re.search(r"\$([^$]*)\$(.*?)\$\1\$", stmt, re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(2)
+    # Oracle PL/SQL: everything after IS / AS, declarations (cursors) included
+    head = re.match(r"\s*", stmt).end()
+    body_start = _plsql_body_start(stmt, head)
+    if body_start is not None:
+        return stmt[body_start:]
     # Single-quoted body  AS '…'
     m = re.search(r"\bAS\b\s+'(.*?)'", stmt, re.DOTALL | re.IGNORECASE)
     if m:
@@ -586,7 +664,7 @@ def _parse_table_columns(body: str) -> list[Column]:
             col.fk_to = f"{ref_m.group(1).lower()}.{(ref_m.group(2) or 'id').lower()}"
 
         def_m = _DEFAULT_RE.search(rest)
-        if def_m:
+        if def_m and def_m.group(1).strip().upper() != "NULL":
             col.default = _clean_default(def_m.group(1))
 
         columns.append(col)
