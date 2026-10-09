@@ -91,7 +91,7 @@ export const ProjectsPanel: React.FC<Props> = ({
                                         type="button"
                                         className="project-item__delete"
                                         title={t('projects.deleteTitle')}
-                                        onClick={(e) => void handleDelete(project.project_name, e)}
+                                        onClick={(e) => handleDelete(project.project_name, e)}
                                         disabled={deletingId === project.project_name}
                                     >
                                         {deletingId === project.project_name ? (

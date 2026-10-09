@@ -92,7 +92,7 @@ jobs:
           done
 
   frontend:
-    name: Frontend (typecheck + build)
+    name: Frontend (lint + typecheck + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -105,5 +105,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/frontend/package-lock.json
       - run: npm ci
+      - run: npm run lint:js
       - run: npx tsc --noEmit -p .
       - run: npm run build

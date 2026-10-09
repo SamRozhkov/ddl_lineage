@@ -288,7 +288,7 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 type="button"
                                 className="btn-scan"
                                 disabled={!canScan}
-                                onClick={() => void onScan(form)}
+                                onClick={() => onScan(form)}
                             >
                                 {scanning ? (
                                     <>

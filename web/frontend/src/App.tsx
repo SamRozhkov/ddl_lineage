@@ -169,11 +169,11 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
             setMermaid(payload.mermaid || '');
             setLastAnalyzedDdl(ddl);
             await loadProjects();
-            const {total_objects, total_edges} = payload.data.stats;
+            const {total_objects: totalObjects, total_edges: totalEdges} = payload.data.stats;
             const cycleCount = payload.data.cycles.length;
             const parts = [
-                `${total_objects} ${plural(total_objects, 'object')}`,
-                `${total_edges} ${plural(total_edges, 'edge')}`,
+                `${totalObjects} ${plural(totalObjects, 'object')}`,
+                `${totalEdges} ${plural(totalEdges, 'edge')}`,
             ];
             if (cycleCount > 0) parts.push(`${cycleCount} ${plural(cycleCount, 'cycle')}`);
             addToast({
@@ -331,7 +331,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                 title: t('toast.projectDeletedTitle', {name}),
                 autoHiding: 2500,
             });
-        } catch (err) {
+        } catch {
             addToast({
                 name: 'delete-error',
                 theme: 'danger',
@@ -360,15 +360,19 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
         }
     };
 
+    // Ctrl/Cmd+Enter must call the current analyze(): it also reads the language,
+    // toasts and project state, not only the DDL
+    const analyzeRef = React.useRef(analyze);
+    analyzeRef.current = analyze;
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                void analyze();
+                analyzeRef.current();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [ddl, loading, projectName]);
+    }, []);
 
     return (
         <AsideHeader
@@ -420,7 +424,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                             projectName={projectName}
                             onProjectNameChange={setProjectName}
                             onLoad={(name) => {
-                                void loadProject(name);
+                                loadProject(name);
                                 setActivePanel(null);
                             }}
                             onDelete={handleDeleteProject}
@@ -518,7 +522,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 type="button"
                                                 className={hasChanges ? undefined : 'btn-secondary'}
                                                 title="Ctrl+Enter"
-                                                onClick={() => void analyze()}
+                                                onClick={() => analyze()}
                                                 disabled={loading || !ddl.trim()}
                                             >
                                                 {loading
@@ -705,7 +709,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 type="button"
                                                 className="btn-secondary"
                                                 disabled={!mermaid}
-                                                onClick={() => void copyText(mermaid, 'Mermaid')}
+                                                onClick={() => copyText(mermaid, 'Mermaid')}
                                             >
                                                 {t('export.copyMermaid')}
                                             </button>
@@ -714,7 +718,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 className="btn-secondary"
                                                 disabled={!result}
                                                 onClick={() =>
-                                                    void copyText(
+                                                    copyText(
                                                         JSON.stringify(result, null, 2),
                                                         'JSON',
                                                     )
@@ -1121,7 +1125,7 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                         title={
                             isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')
                         }
-                        onClick={() => void toggleFullscreen()}
+                        onClick={() => toggleFullscreen()}
                     >
                         <Icon
                             data={isFullscreen ? ChevronsCollapseUpRight : ArrowsExpand}

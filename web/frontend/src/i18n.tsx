@@ -85,6 +85,8 @@ export const LanguageProvider: React.FC<{children: React.ReactNode}> = ({childre
 
     const value = React.useMemo(
         () => ({lang, setLang, t, plural}),
+        // registryVersion is intentional (the hooks linter calls it unnecessary): a
+        // language pack registered at runtime changes what t() returns for the same lang
         [lang, setLang, t, plural, registryVersion],
     );
 

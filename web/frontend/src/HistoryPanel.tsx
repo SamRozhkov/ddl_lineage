@@ -150,7 +150,7 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                                             type="button"
                                             className="version-item__restore"
                                             disabled={restoringId === entry.id}
-                                            onClick={() => void handleRestore(entry.id)}
+                                            onClick={() => handleRestore(entry.id)}
                                         >
                                             {restoringId === entry.id ? (
                                                 <Spin size="xs" />
