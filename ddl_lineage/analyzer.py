@@ -779,16 +779,19 @@ class DDLLineageAnalyzer:
 
     def to_mermaid(self, result: dict) -> str:
         """Mermaid flowchart (paste into mermaid.live or any Markdown renderer)."""
+        def node(name: str, indent: str = "  ") -> str:
+            return f'{indent}{_mermaid_id(name)}["{_mermaid_text(name)}<br/>{types[name]}"]'
+
         lines = ["graph LR"]
         groups = _function_groups(result)
         grouped = {m for members in groups.values() for m in members}
         types = {o["name"]: o["type"] for o in result["objects"]}
         for o in sorted(result["objects"], key=lambda x: x["name"]):
             if o["name"] not in grouped:
-                lines.append(f'  {o["name"]}["{o["name"]}\\n{o["type"]}"]')
+                lines.append(node(o["name"]))
         for fn, members in groups.items():
-            lines.append(f'  subgraph {fn}_group["ƒ {fn}"]')
-            lines.extend(f'    {m}["{m}\\n{types[m]}"]' for m in members)
+            lines.append(f'  subgraph {_mermaid_id(fn)}_group["ƒ {_mermaid_text(fn)}"]')
+            lines.extend(node(m, "    ") for m in members)
             lines.append("  end")
         labels = {
             "FK":       "FK",
@@ -800,14 +803,20 @@ class DDLLineageAnalyzer:
             lbl = labels.get(e["type"], e["type"])
             if e.get("details"):
                 lbl = f"{lbl} ({e['details']})"
-            lines.append(f'  {e["source"]} -->|"{lbl}"| {e["target"]}')
+            lines.append(
+                f'  {_mermaid_id(e["source"])} -->|"{_mermaid_text(lbl)}"| {_mermaid_id(e["target"])}'
+            )
         for f in result.get("flows", []):
             lbl = f.get("details") or f["type"].lower()
-            lines.append(f'  {f["source"]} ==>|"{lbl}"| {f["target"]}')
+            lines.append(
+                f'  {_mermaid_id(f["source"])} ==>|"{_mermaid_text(lbl)}"| {_mermaid_id(f["target"])}'
+            )
         if result.get("cycles"):
-            lines.append("\n%% WARNING: Circular dependencies detected:")
-            for cyc in result["cycles"]:
-                lines.append(f"%% {' -> '.join(cyc)}")
+            cycle_nodes = sorted({n for cyc in result["cycles"] for n in cyc if n in types})
+            lines.append("  %% WARNING: circular dependencies detected:")
+            lines.extend(f"  %% {' -> '.join(cyc)}" for cyc in result["cycles"])
+            lines.append("  classDef cycle stroke:#d33,stroke-width:3px")
+            lines.append(f"  class {','.join(_mermaid_id(n) for n in cycle_nodes)} cycle")
         return "\n".join(lines)
 
     def to_json(self, result: dict) -> str:
@@ -824,3 +833,22 @@ def _function_groups(result: dict) -> dict[str, list[str]]:
         if o.get("parent") and o["parent"] in names:
             groups[o["parent"]].append(o["name"])
     return {fn: [fn, *tables] for fn, tables in sorted(groups.items())}
+
+
+# Words Mermaid's flowchart grammar reserves; a node named like this breaks parsing
+_MERMAID_RESERVED = {
+    "end", "graph", "flowchart", "subgraph", "style", "class", "classdef", "click",
+    "linkstyle", "direction", "call", "href", "default", "interpolate",
+}
+
+
+def _mermaid_id(name: str) -> str:
+    node_id = re.sub(r"\W", "_", name)
+    if node_id.lower() in _MERMAID_RESERVED or not node_id[:1].isalpha():
+        node_id = f"n_{node_id}"
+    return node_id
+
+
+def _mermaid_text(text: str) -> str:
+    """Text inside a quoted Mermaid label."""
+    return text.replace('"', "#quot;")

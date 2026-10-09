@@ -300,29 +300,8 @@ def get_topo():
 
 
 def _to_mermaid(result: dict) -> str:
-    """Convert lineage result to Mermaid diagram syntax."""
-    lines = ['graph LR']
-    
-    # Add nodes
-    for obj in result['objects']:
-        node_id = obj['name'].replace('.', '_').replace('-', '_')
-        label = f"{obj['type']}<br/>{obj['name']}"
-        lines.append(f'    {node_id}["{label}"]')
-    
-    # Add edges with different styles
-    for i, edge in enumerate(result.get('edges', [])):
-        src_id = edge['source'].replace('.', '_').replace('-', '_')
-        tgt_id = edge['target'].replace('.', '_').replace('-', '_')
-        edge_label = edge['type']
-        if edge.get('details'):
-            edge_label += f" ({edge['details']})"
-        lines.append(f'    {src_id} -->|{edge_label}| {tgt_id}')
-    
-    # Add style definitions
-    if result.get('cycles'):
-        lines.append('    linkStyle default stroke:orange,stroke-width:2px')
-    
-    return '\n'.join(lines)
+    """Mermaid diagram of a lineage result (same output as the CLI's ``-f mermaid``)."""
+    return DDLLineageAnalyzer().to_mermaid(result)
 
 
 @app.route('/api/connect', methods=['POST', 'OPTIONS'])

@@ -565,6 +565,9 @@ class TestReadReferenceForms:
     def test_subquery_is_not_a_table(self):
         assert self.reads("SELECT x FROM (SELECT id FROM t) sub, (VALUES (1)) vals(x)") == ["t"]
 
+    def test_quoted_keyword_table_names(self):
+        assert self.reads('SELECT * FROM "order" o JOIN `group` g ON g.id = o.group_id') == ["group", "order"]
+
     def test_from_inside_functions_is_not_a_table(self):
         sql = (
             "SELECT EXTRACT(YEAR FROM created_at) y, SUBSTRING(name FROM 2 FOR 3) s, "
@@ -793,6 +796,26 @@ class TestOutputFormats:
         out = a.to_mermaid(r)
         assert "graph LR" in out
         assert "users" in out
+
+    def test_to_mermaid_reserved_words_are_not_node_ids(self):
+        a, r = make("CREATE TABLE \"end\" (id INT); CREATE VIEW graph AS SELECT id FROM \"end\";")
+        out = a.to_mermaid(r)
+        assert "  n_end[" in out
+        assert "  n_graph -->" in out
+        assert "\n  end[" not in out
+
+    def test_to_mermaid_escapes_quotes_in_labels(self):
+        a, r = make('CREATE TABLE t (id INT); CREATE TABLE u (t_id INT REFERENCES t(id));')
+        r["edges"][0]["details"] = 'say "hi"'
+        out = a.to_mermaid(r)
+        assert '#quot;hi#quot;' in out
+        assert '"hi"' not in out
+
+    def test_to_mermaid_highlights_cycles(self):
+        a, r = make(CYCLE_DDL)
+        out = a.to_mermaid(r)
+        assert "classDef cycle" in out
+        assert any(line.startswith("  class ") and line.endswith(" cycle") for line in out.splitlines())
 
     def test_to_dot_groups_function_tables_and_draws_flows(self):
         a, r = make(FN_TABLES_DDL)

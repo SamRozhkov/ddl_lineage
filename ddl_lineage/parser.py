@@ -347,9 +347,11 @@ def _read_references(body: str, via: str, exclude: set[str]) -> list[LineageEdge
     edges: list[LineageEdge] = []
     seen: set[str] = set()
 
-    def add(name: str) -> None:
-        t = name.lower()
-        if not t or t.upper() in SQL_KW or t in exclude or t in seen or t == via:
+    def add(token: str) -> None:
+        # A quoted name is an identifier even when it spells a keyword ("order")
+        quoted = token[:1] in '`"['
+        t = _unquote_ident(token).lower()
+        if not t or (not quoted and t.upper() in SQL_KW) or t in exclude or t in seen or t == via:
             return
         seen.add(t)
         edges.append(LineageEdge(source=via, target=t, edge_type="READ", via=via))
@@ -380,7 +382,7 @@ def _read_references(body: str, via: str, exclude: set[str]) -> list[LineageEdge
                     if rest.startswith("("):          # table function: unnest(…), generate_series(…)
                         i = _skip_parens(body, len(body) - len(rest))
                     elif _unquote_ident(tm.group(2)).upper() not in ("SELECT", "WITH", "VALUES"):
-                        add(_unquote_ident(tm.group(2)))
+                        add(tm.group(2))
                 break
 
             am = _ALIAS_RE.match(body, i)
