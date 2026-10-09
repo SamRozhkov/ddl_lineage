@@ -50,7 +50,18 @@ def _remove_comments(sql: str) -> str:
     return sql
 
 
-def _split_statements(sql: str) -> list[str]:
+# Block keywords for _split_statements. A transaction ``BEGIN;`` / ``BEGIN
+# TRANSACTION`` is not a block, and ``END IF`` / ``END LOOP`` … close blocks
+# whose openers are not counted.
+_BLOCK_WORD_RE = re.compile(
+    r"(?P<open>BEGIN\b(?!\s*(?:;|TRANSACTION\b|TRAN\b|WORK\b|ISOLATION\b|DISTRIBUTED\b))|CASE\b)"
+    r"|(?P<close>END\b(?!\s+(?:IF|LOOP|WHILE|REPEAT|FOR)\b))"
+    r"|\w+",
+    re.IGNORECASE,
+)
+
+
+def _split_statements(sql: str, track_blocks: bool = True) -> list[str]:
     """
     Split a SQL script into individual statements on ';'.
 
@@ -58,12 +69,16 @@ def _split_statements(sql: str) -> list[str]:
       - PostgreSQL dollar-quoting   ($tag$ … $tag$)
       - Single-quoted string literals with escaped quotes ('')
       - Nested parentheses
+      - BEGIN … END / CASE … END blocks of routines without dollar-quoting
+        (MySQL, T-SQL), so their inner ';' do not end the statement.
+        Pass ``track_blocks=False`` to split a routine body into its statements.
     """
     parts: list[str] = []
     cur: list[str] = []
     in_dollar, dollar_tag = False, ""
     in_sq = False
     depth = 0
+    blocks = 0
     i = 0
 
     while i < len(sql):
@@ -76,13 +91,23 @@ def _split_statements(sql: str) -> list[str]:
                 cur.append(dollar_tag)
                 i += len(dollar_tag)
                 continue
+            if track_blocks and ch.isalpha() and (i == 0 or not _is_identifier_char(sql[i - 1])):
+                word = _BLOCK_WORD_RE.match(sql, i)
+                if word:
+                    if word.group("open"):
+                        blocks += 1
+                    elif word.group("close"):
+                        blocks = max(0, blocks - 1)
+                    cur.append(word.group(0))
+                    i = word.end()
+                    continue
             if ch == "'":
                 in_sq = True
             elif ch == "(":
                 depth += 1
             elif ch == ")":
                 depth -= 1
-            elif ch == ";" and depth == 0:
+            elif ch == ";" and depth == 0 and blocks == 0:
                 parts.append("".join(cur))
                 cur = []
                 i += 1
@@ -111,6 +136,22 @@ def _split_statements(sql: str) -> list[str]:
     if tail:
         parts.append(tail)
     return parts
+
+
+# MySQL options between CREATE and the object kind (SHOW CREATE / mysqldump)
+_CREATE_OPTIONS_RE = re.compile(
+    r"^(\s*CREATE\s+(?:OR\s+REPLACE\s+)?)"
+    r"(?:(?:ALGORITHM\s*=\s*\w+"
+    r"|DEFINER\s*=\s*(?:`[^`]*`|'[^']*'|\"[^\"]*\"|\w+)"
+    r"(?:\s*@\s*(?:`[^`]*`|'[^']*'|\"[^\"]*\"|[\w.%-]+))?"
+    r"|SQL\s+SECURITY\s+\w+)\s+)+",
+    re.IGNORECASE,
+)
+
+
+def _strip_create_options(stmt: str) -> str:
+    """``CREATE DEFINER=`u`@`%` SQL SECURITY DEFINER VIEW v`` -> ``CREATE VIEW v``"""
+    return _CREATE_OPTIONS_RE.sub(r"\1", stmt, count=1)
 
 
 def _extract_object_name(stmt: str) -> tuple[str, str]:
@@ -251,26 +292,107 @@ def _cte_names(body: str) -> set[str]:
     return names
 
 
+_IDENT_TOKEN = r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][\w$]*)'
+_TABLE_REF_RE = re.compile(rf"\s*((?:{_IDENT_TOKEN}\s*\.\s*)*)({_IDENT_TOKEN})")
+_ALIAS_RE = re.compile(rf"\s+(?:AS\s+)?({_IDENT_TOKEN})", re.IGNORECASE)
+# Words that can follow a table reference and are not its alias
+_NOT_ALIAS = SQL_KW | {"JOIN", "WINDOW", "RETURNING", "QUALIFY", "SAMPLE", "STRAIGHT_JOIN"}
+# FROM inside these calls is part of the syntax, not a table source
+_FROM_FUNCTIONS = {"EXTRACT", "SUBSTRING", "SUBSTR", "TRIM", "OVERLAY", "POSITION"}
+
+
+def _unquote_ident(token: str) -> str:
+    return token[1:-1] if token[:1] in '`"[' else token
+
+
+def _enclosing_call(text: str, pos: int) -> str:
+    """Upper-cased name of the function whose parentheses enclose *pos* ('' if none)."""
+    depth = 0
+    for i in range(pos - 1, -1, -1):
+        if text[i] == ")":
+            depth += 1
+        elif text[i] == "(":
+            if depth == 0:
+                m = re.search(r"(\w+)\s*$", text[:i])
+                return m.group(1).upper() if m else ""
+            depth -= 1
+    return ""
+
+
+def _skip_parens(text: str, start: int) -> int:
+    """Index just after the parenthesis group opened at *start*."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return len(text)
+
+
 def _read_references(body: str, via: str, exclude: set[str]) -> list[LineageEdge]:
     """
     Scan *body* for FROM / JOIN references and return READ LineageEdges.
+
+    Understands comma-separated FROM lists, parenthesised join trees
+    (``FROM ((a JOIN b ON …) JOIN c ON …)`` as MySQL stores views), schema-
+    qualified and quoted names, and skips subqueries, table functions and the
+    ``FROM`` keyword of EXTRACT / SUBSTRING / TRIM ….
 
     :param via:     Name of the view / function that contains the query.
     :param exclude: Set of CTE aliases to ignore.
     """
     edges: list[LineageEdge] = []
     seen: set[str] = set()
-    patterns = [
-        r"\bFROM\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?(?:\s+(?:AS\s+)?`?\"?\w+\"?`?)?",
-        r"\bJOIN\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?(?:\s+(?:AS\s+)?`?\"?\w+\"?`?)?",
-    ]
-    for pat in patterns:
-        for m in re.finditer(pat, body, re.IGNORECASE):
-            t = m.group(1).lower()
-            if not t or t.upper() in SQL_KW or t in exclude or t in seen or t == via:
-                continue
-            seen.add(t)
-            edges.append(LineageEdge(source=via, target=t, edge_type="READ", via=via))
+
+    def add(name: str) -> None:
+        t = name.lower()
+        if not t or t.upper() in SQL_KW or t in exclude or t in seen or t == via:
+            return
+        seen.add(t)
+        edges.append(LineageEdge(source=via, target=t, edge_type="READ", via=via))
+
+    for kw in re.finditer(r"\b(FROM|JOIN)\b", body, re.IGNORECASE):
+        is_from = kw.group(1).upper() == "FROM"
+        if is_from and _enclosing_call(body, kw.start()) in _FROM_FUNCTIONS:
+            continue
+        i = kw.end()
+        while True:
+            # Opening parentheses of a join tree; a subquery is skipped whole
+            while True:
+                j = len(body) - len(body[i:].lstrip())
+                if j < len(body) and body[j] == "(":
+                    if re.match(r"\(\s*(?:SELECT|WITH|VALUES)\b", body[j:], re.IGNORECASE):
+                        i = _skip_parens(body, j)
+                        break
+                    i = j + 1
+                    continue
+                i = j
+                tm = _TABLE_REF_RE.match(body, i)
+                if tm and _unquote_ident(tm.group(2)).upper() in ("ONLY", "LATERAL"):
+                    i = tm.end()
+                    continue
+                if tm:
+                    i = tm.end()
+                    rest = body[i:].lstrip()
+                    if rest.startswith("("):          # table function: unnest(…), generate_series(…)
+                        i = _skip_parens(body, len(body) - len(rest))
+                    elif _unquote_ident(tm.group(2)).upper() not in ("SELECT", "WITH", "VALUES"):
+                        add(_unquote_ident(tm.group(2)))
+                break
+
+            am = _ALIAS_RE.match(body, i)
+            if am and _unquote_ident(am.group(1)).upper() not in _NOT_ALIAS:
+                i = am.end()
+                if body[i:].lstrip().startswith("("):  # alias column list: vals(x, y)
+                    i = _skip_parens(body, len(body) - len(body[i:].lstrip()))
+
+            nxt = re.match(r"\s*,", body[i:])
+            if not (is_from and nxt and _enclosing_call(body, kw.start()) == _enclosing_call(body, i)):
+                break
+            i += nxt.end()
     return edges
 
 
@@ -326,70 +448,164 @@ def _parse_column_lineage(insert_stmt: str, tgt_table: str, via: str) -> list[Co
 # Column definition parser
 # ---------------------------------------------------------------------------
 
+# Optionally schema-qualified, optionally quoted identifier; group 1 = bare name
+_QUALIFIED_IDENT = r"(?:[`\"\[]?\w+[`\"\]]?\.)*[`\"\[]?(\w+)[`\"\]]?"
+_IDENT_LIST = r"\(([^)]*)\)"
+
+# First keyword after a column's data type
+_COLUMN_MODIFIER_RE = re.compile(
+    r"\b(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|DEFAULT|REFERENCES|CHECK|CONSTRAINT|"
+    r"COLLATE|GENERATED|AUTO_INCREMENT|AUTOINCREMENT|IDENTITY|COMMENT|ON\s+UPDATE|"
+    r"CHARACTER\s+SET|CHARSET)\b",
+    re.IGNORECASE,
+)
+_DEFAULT_RE = re.compile(
+    r"\bDEFAULT\s+(.+?)(?=\s+(?:NOT\s+NULL|NULL|PRIMARY\s+KEY|UNIQUE|REFERENCES|CHECK|"
+    r"CONSTRAINT|COLLATE|GENERATED|ON\s+UPDATE|COMMENT|AUTO_INCREMENT)\b|\s*$)",
+    re.IGNORECASE | re.DOTALL,
+)
+_INLINE_REFERENCES_RE = re.compile(
+    rf"\bREFERENCES\s+{_QUALIFIED_IDENT}\s*(?:\(\s*[`\"\[]?(\w+)[`\"\]]?\s*\))?",
+    re.IGNORECASE,
+)
+_FOREIGN_KEY_RE = re.compile(
+    rf"\bFOREIGN\s+KEY\s*(?:[`\"\[]?\w+[`\"\]]?\s*)?{_IDENT_LIST}\s*"
+    rf"REFERENCES\s+{_QUALIFIED_IDENT}\s*(?:{_IDENT_LIST})?",
+    re.IGNORECASE,
+)
+_TABLE_CONSTRAINT_RE = re.compile(
+    r"^(?:CONSTRAINT\s+[`\"\[]?\w+[`\"\]]?\s+)?"
+    r"(?P<kind>PRIMARY\s+KEY|UNIQUE(?:\s+(?:KEY|INDEX))?|FOREIGN\s+KEY|CHECK|EXCLUDE)"
+    r"(?:\s+[`\"\[]?\w+[`\"\]]?)?\s*(?:\((?P<cols>[^)]*)\))?",
+    re.IGNORECASE,
+)
+
+
+def _ident_list(text: str) -> list[str]:
+    return [c.strip().strip('`"[]').lower() for c in text.split(",") if c.strip()]
+
+
+def _parse_foreign_keys(text: str) -> list[tuple[list[str], str, list[str]]]:
+    """
+    Find ``FOREIGN KEY (cols) REFERENCES [schema.]table [(ref_cols)]`` clauses.
+
+    Returns ``(columns, referenced_table, referenced_columns)`` triples;
+    missing referenced columns default to ``id`` (single column) or to the
+    same column names.
+    """
+    fks = []
+    for m in _FOREIGN_KEY_RE.finditer(text):
+        cols = _ident_list(m.group(1))
+        ref_cols = _ident_list(m.group(3) or "") or (["id"] if len(cols) == 1 else cols)
+        fks.append((cols, m.group(2).lower(), ref_cols))
+    return fks
+
+
+def _find_top_level(pattern: re.Pattern, text: str) -> re.Match | None:
+    """First match of *pattern* that is outside parentheses and string literals."""
+    for m in pattern.finditer(text):
+        prefix = re.sub(r"'(?:[^']|'')*'", "", text[:m.start()])
+        if prefix.count("'") % 2 == 0 and prefix.count("(") == prefix.count(")"):
+            return m
+    return None
+
+
+def _normalize_type(data_type: str) -> str:
+    t = re.sub(r"\s+", " ", data_type.strip()).upper()
+    return re.sub(r"\s*([(),])\s*", r"\1", t)
+
+
+def _clean_default(expr: str) -> str:
+    expr = expr.strip()
+    # 'new'::character varying  ->  'new'
+    expr = re.sub(r"^('(?:[^']|'')*')::[\w\s]+(?:\([^)]*\))?$", r"\1", expr)
+    if len(expr) >= 2 and expr[0] == expr[-1] and expr[0] in "'\"":
+        expr = expr[1:-1]
+    return expr
+
+
 def _parse_table_columns(body: str) -> list[Column]:
     """
     Parse column definitions inside CREATE TABLE ( … ).
 
     Handles PostgreSQL, MySQL, SQLite, T-SQL column syntax including:
+      - multi-word / parameterised types (``character varying(255)``, ``numeric(10,2)``)
       - NOT NULL / NULL
-      - PRIMARY KEY  (inline and table-level)
+      - PRIMARY KEY  (inline and table-level, also composite)
       - SERIAL / IDENTITY (auto-increment patterns)
-      - UNIQUE
+      - UNIQUE  (inline and single-column table-level)
       - DEFAULT value
-      - REFERENCES table(col)  (inline FK)
+      - REFERENCES [schema.]table(col)  (inline FK)
+      - FOREIGN KEY (cols) REFERENCES [schema.]table(cols)  (table-level FK)
     """
     columns: list[Column] = []
+    constraints: list[tuple[str, str]] = []
 
     for part in _split_top_level_csv(body):
         part = part.strip()
         if not part:
             continue
 
-        # Skip table-level constraints
-        if re.match(r"(PRIMARY|UNIQUE|CHECK|FOREIGN|CONSTRAINT|INDEX|KEY\s)", part, re.IGNORECASE):
+        con = _TABLE_CONSTRAINT_RE.match(part)
+        if con:
+            constraints.append((con.group("kind").upper(), part))
+            continue
+        if re.match(r"(INDEX|KEY|FULLTEXT|SPATIAL|LIKE|PERIOD)\b", part, re.IGNORECASE):
             continue
 
-        # Match:  col_name  data_type  [modifiers…]
-        cm = re.match(
-            r'`?"?(\w+)"?`?\s+([\w\s()]+?)(?:\s+(.*))?$',
-            part, re.IGNORECASE,
-        )
+        cm = re.match(r'[`"\[]?(\w+)[`"\]]?(?:\s+(.*))?$', part, re.IGNORECASE | re.DOTALL)
         if not cm:
             continue
-
         col_name = cm.group(1).lower()
-        col_type = cm.group(2).strip().upper()
-        modifiers = (cm.group(3) or "").upper()
-
         if col_name.upper() in SQL_KW:
             continue
+
+        rest = cm.group(2) or ""
+        mod = _find_top_level(_COLUMN_MODIFIER_RE, rest)
+        col_type = _normalize_type(rest[:mod.start()] if mod else rest)
+        modifiers = re.sub(r"\s+", " ", rest[mod.start():]).upper() if mod else ""
 
         col = Column(name=col_name, data_type=col_type)
 
         if "NOT NULL" in modifiers:
             col.nullable = False
-        if "PRIMARY KEY" in modifiers or re.search(r"\bSERIAL\b|\bIDENTITY\b", col_type):
+        if (
+            "PRIMARY KEY" in modifiers
+            or re.search(r"\bSERIAL\b|\bIDENTITY\b", col_type)
+            or re.search(r"\bIDENTITY\b", modifiers)
+        ):
             col.pk = True
             col.nullable = False
-        if "UNIQUE" in modifiers:
+        if re.search(r"\bUNIQUE\b", modifiers):
             col.unique = True
 
-        # Inline REFERENCES table(col)
-        ref_m = re.search(
-            r"REFERENCES\s+`?\"?(\w+)\"?`?\s*(?:\(\s*`?\"?(\w+)\"?`?\s*\))?",
-            part, re.IGNORECASE,
-        )
+        ref_m = _INLINE_REFERENCES_RE.search(rest)
         if ref_m:
-            ref_t = ref_m.group(1).lower()
-            ref_c = (ref_m.group(2) or "id").lower()
-            col.fk_to = f"{ref_t}.{ref_c}"
+            col.fk_to = f"{ref_m.group(1).lower()}.{(ref_m.group(2) or 'id').lower()}"
 
-        # DEFAULT
-        def_m = re.search(r"DEFAULT\s+(\S+)", part, re.IGNORECASE)
+        def_m = _DEFAULT_RE.search(rest)
         if def_m:
-            col.default = def_m.group(1).strip("'\"")
+            col.default = _clean_default(def_m.group(1))
 
         columns.append(col)
+
+    by_name = {c.name: c for c in columns}
+    for kind, part in constraints:
+        if kind == "FOREIGN KEY":
+            for cols, ref_table, ref_cols in _parse_foreign_keys(part):
+                for col_name, ref_col in zip(cols, ref_cols):
+                    if col_name in by_name:
+                        by_name[col_name].fk_to = f"{ref_table}.{ref_col}"
+            continue
+        cols_m = _TABLE_CONSTRAINT_RE.match(part)
+        names = _ident_list(cols_m.group("cols") or "") if cols_m else []
+        if kind == "PRIMARY KEY":
+            for col_name in names:
+                if col_name in by_name:
+                    by_name[col_name].pk = True
+                    by_name[col_name].nullable = False
+        elif kind.startswith("UNIQUE") and len(names) == 1 and names[0] in by_name:
+            by_name[names[0]].unique = True
 
     return columns
 

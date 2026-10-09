@@ -16,14 +16,17 @@ from .parser import (
     _extract_function_body,
     _extract_object_name,
     _extract_select_list,
+    _QUALIFIED_IDENT,
     _extract_table_definition_body,
     _parse_ctas_columns,
     _parse_column_lineage,
+    _parse_foreign_keys,
     _parse_returns_table_columns,
     _parse_select_columns,
     _parse_table_columns,
     _read_references,
     _remove_comments,
+    _strip_create_options,
     _select_expression_name,
     _split_top_level_csv,
     _split_statements,
@@ -43,11 +46,15 @@ _WRITE_PATTERNS: list[tuple[str, str]] = [
     ),
     # INSERT … VALUES
     (
-        r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?\s+VALUES[^;]+",
+        r"INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?\s*(?:\([^)]*\)\s*)?VALUES[^;]+",
         "INSERT_VALUES",
     ),
     # UPDATE
-    (r"UPDATE\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?\s+SET", "UPDATE"),
+    # UPDATE [ONLY] t [[AS] alias] [JOIN …] SET   (not SELECT … FOR UPDATE)
+    (
+        r"(?<!\bFOR\s)\bUPDATE\s+(?:ONLY\s+)?(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?(?=[^;]*?\bSET\b)",
+        "UPDATE",
+    ),
     # DELETE
     (r"DELETE\s+FROM\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?", "DELETE"),
     # MERGE / UPSERT
@@ -64,6 +71,12 @@ _CREATE_TABLE_RE = re.compile(
 _CREATE_TEMP_TABLE_RE = re.compile(
     r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?"
     r"TEMP(?:ORARY)?\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?",
+    re.IGNORECASE,
+)
+_BODY_CREATE_TABLE_RE = re.compile(
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:GLOBAL|LOCAL)\s+)?"
+    r"(?:(?P<temp>TEMP(?:ORARY)?)\s+|UNLOGGED\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(?:`?\"?(?P<schema>\w+)\"?`?\.)?`?\"?(?P<name>\w+)\"?`?",
     re.IGNORECASE,
 )
 
@@ -99,6 +112,10 @@ class DDLLineageAnalyzer:
         self.objects:    dict[str, DDLObject]  = {}
         self.edges:      list[LineageEdge]     = []
         self.col_lineage: list[ColumnLineage]  = []
+        # Statement-level data flow inside function bodies: source -> target
+        self.flows:      list[LineageEdge]     = []
+        # Tables created inside function bodies (registered unless defined top-level)
+        self.fn_tables:  dict[str, DDLObject]  = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -111,9 +128,10 @@ class DDLLineageAnalyzer:
         Result schema
         -------------
         {
-            "objects":     [{"name", "type", "schema", "columns": [...]}],
+            "objects":     [{"name", "type", "schema", "temporary", "parent", "columns": [...]}],
             "edges":       [{"source", "target", "type", "via", "details", "col_lineage"}],
             "col_lineage": [{"src_table", "src_col", "tgt_table", "tgt_col", "via"}],
+            "flows":       [{"source", "target", "type", "via", "details"}],  # data flow in function bodies
             "cycles":      [["a", "b", "c", "a"], …],
             "topo_order":  ["users", "orders", …],
             "stats":       {"total_objects", "total_edges", "has_cycles"},
@@ -123,6 +141,8 @@ class DDLLineageAnalyzer:
         self.objects.clear()
         self.edges.clear()
         self.col_lineage.clear()
+        self.flows.clear()
+        self.fn_tables.clear()
 
         ddl = _remove_comments(ddl)
         for stmt in _split_statements(ddl):
@@ -153,6 +173,7 @@ class DDLLineageAnalyzer:
     # ------------------------------------------------------------------
 
     def _dispatch(self, stmt: str) -> None:
+        stmt = _strip_create_options(stmt.strip())
         if _CREATE_TABLE_RE.match(stmt):
             self._parse_table(stmt)
         elif re.match(r"CREATE\s+(OR\s+REPLACE\s+)?MATERIALIZED\s+VIEW", stmt, re.IGNORECASE):
@@ -181,34 +202,29 @@ class DDLLineageAnalyzer:
             columns=columns, temporary=temporary, raw=stmt[:100],
         )
 
-        # FK edges derived from column-level inline REFERENCES
+        # FK edges: one per referenced table, from inline REFERENCES and
+        # table-level FOREIGN KEY constraints (both end up in Column.fk_to)
+        fk_details: dict[str, list[str]] = defaultdict(list)
         for col in columns:
             if col.fk_to:
-                ref_table = col.fk_to.split(".")[0]
-                if ref_table != name:
-                    self._add_edge(LineageEdge(
-                        source=name, target=ref_table, edge_type="FK",
-                        via=name, details=f"{col.name} -> {col.fk_to}",
-                    ))
-
-        # Explicit FOREIGN KEY (…) REFERENCES table  constraints
-        for m in re.finditer(
-            r"FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?",
-            body, re.IGNORECASE,
-        ):
+                fk_details[col.fk_to.split(".")[0]].append(f"{col.name} -> {col.fk_to}")
+        for ref_table, details in fk_details.items():
             self._add_edge(LineageEdge(
-                source=name, target=m.group(1).lower(), edge_type="FK", via=name,
+                source=name, target=ref_table, edge_type="FK",
+                via=name, details=", ".join(details),
             ))
 
-        # LIKE / INHERITS (table inheritance)
-        for m in re.finditer(
-            r"\bLIKE\s+`?\"?(\w+)\"?`?|\bINHERITS\s*\(\s*`?\"?(\w+)\"?`?",
-            body, re.IGNORECASE,
-        ):
-            parent = (m.group(1) or m.group(2) or "").lower()
+        # LIKE parent (inside the column list) / INHERITS (parents) after it
+        parents = [m.group(1) for m in re.finditer(
+            rf"(?:^|,)\s*LIKE\s+{_QUALIFIED_IDENT}", body, re.IGNORECASE,
+        )]
+        inh = re.search(r"\)\s*INHERITS\s*\(([^)]*)\)", stmt, re.IGNORECASE)
+        if inh:
+            parents += [p.strip().split(".")[-1].strip('`"[]') for p in inh.group(1).split(",")]
+        for parent in parents:
             if parent:
                 self._add_edge(LineageEdge(
-                    source=name, target=parent, edge_type="INHERITS", via=name,
+                    source=name, target=parent.lower(), edge_type="INHERITS", via=name,
                 ))
 
     def _parse_view(self, stmt: str, obj_type: str) -> None:
@@ -262,6 +278,63 @@ class DDLLineageAnalyzer:
                     source=name, target=t, edge_type="WRITE",
                     via=name, details=detail, col_lineage=col_lin,
                 ))
+
+        # Tables created in the body + statement-level data flow
+        for body_stmt in _split_statements(body, track_blocks=False):
+            self._parse_function_statement(body_stmt, name, ctes)
+
+    def _parse_function_statement(self, stmt: str, fn: str, ctes: set[str]) -> None:
+        """
+        Record data flow of one statement inside a function body.
+
+        Flows go from the tables a statement reads to the tables it creates or
+        writes. A write with nothing read flows out of the function itself; a
+        read with nothing written (RETURN, SELECT INTO var, IF …) flows into it.
+        """
+        targets: dict[str, str] = {}   # table -> detail label
+
+        create_m = _BODY_CREATE_TABLE_RE.search(stmt)
+        if create_m:
+            table = create_m.group("name").lower()
+            self._register_function_table(stmt[create_m.start():], create_m, fn)
+            targets[table] = "CREATE"
+            self._add_edge(LineageEdge(
+                source=fn, target=table, edge_type="WRITE", via=fn, details="CREATE",
+            ))
+
+        for pat, detail in _WRITE_PATTERNS:
+            for m in re.finditer(pat, stmt, re.IGNORECASE | re.DOTALL):
+                t = m.group(1).lower()
+                if t and t not in ctes and t.upper() not in SQL_KW:
+                    targets.setdefault(t, detail)
+
+        sources = [e.target for e in _read_references(stmt, fn, ctes) if e.target not in targets]
+
+        if not targets:
+            for src in sources:
+                self._add_flow(LineageEdge(source=src, target=fn, edge_type="READ", via=fn))
+            return
+        for tgt, detail in targets.items():
+            for src in sources or [fn]:
+                self._add_flow(LineageEdge(
+                    source=src, target=tgt, edge_type="WRITE", via=fn, details=detail,
+                ))
+
+    def _register_function_table(self, stmt: str, create_m: re.Match, fn: str) -> None:
+        name = create_m.group("name").lower()
+        if name in self.fn_tables:
+            return
+        body = _extract_table_definition_body(stmt)
+        columns = _parse_table_columns(_remove_comments(body)) if body else self._parse_derived_columns(stmt)
+        self.fn_tables[name] = DDLObject(
+            name=name, type="TABLE", schema=(create_m.group("schema") or "").lower(),
+            columns=columns, temporary=bool(create_m.group("temp")),
+            raw=stmt[:100], parent=fn,
+        )
+
+    def _add_flow(self, flow: LineageEdge) -> None:
+        if flow.source != flow.target:
+            self.flows.append(flow)
 
     def _parse_derived_columns(self, stmt: str) -> list[Column]:
         select_list = _extract_select_list(stmt)
@@ -382,14 +455,29 @@ class DDLLineageAnalyzer:
 
     def _parse_alter_table(self, stmt: str) -> None:
         m = re.search(
-            r"ALTER\s+TABLE\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?",
+            r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?",
             stmt, re.IGNORECASE,
         )
         if not m:
             return
         table = m.group(1).lower()
 
-        # ADD FOREIGN KEY / ADD COLUMN … REFERENCES
+        # ADD [CONSTRAINT …] FOREIGN KEY (cols) REFERENCES t(cols)
+        fks = _parse_foreign_keys(stmt)
+        obj_columns = {c.name: c for c in self.objects[table].columns} if table in self.objects else {}
+        for cols, ref_table, ref_cols in fks:
+            details = []
+            for col_name, ref_col in zip(cols, ref_cols):
+                details.append(f"{col_name} -> {ref_table}.{ref_col}")
+                if col_name in obj_columns:
+                    obj_columns[col_name].fk_to = f"{ref_table}.{ref_col}"
+            self._add_edge(LineageEdge(
+                source=table, target=ref_table, edge_type="FK", via=table, details=", ".join(details),
+            ))
+        if fks:
+            return
+
+        # ADD COLUMN … REFERENCES
         for m2 in re.finditer(
             r"REFERENCES\s+(?:`?\"?\w+\"?`?\.)*`?\"?(\w+)\"?`?",
             stmt, re.IGNORECASE,
@@ -416,6 +504,19 @@ class DDLLineageAnalyzer:
                 seen.add(key)
                 unique.append(e)
 
+        # Tables created inside functions, unless also defined at top level
+        for nm, obj in self.fn_tables.items():
+            if nm not in self.objects:
+                self.objects[nm] = obj
+
+        flows: list[LineageEdge] = []
+        seen_flows: set[tuple] = set()
+        for f in self.flows:
+            key = (f.source, f.target, f.edge_type, f.details, f.via)
+            if key not in seen_flows:
+                seen_flows.add(key)
+                flows.append(f)
+
         # Auto-register objects that are referenced but never defined
         for e in unique:
             for nm in (e.source, e.target):
@@ -433,6 +534,7 @@ class DDLLineageAnalyzer:
                     "type": o.type,
                     "schema": o.schema,
                     "temporary": o.temporary,
+                    "parent":    o.parent,
                     "columns": [
                         {
                             "name":     c.name,
@@ -478,6 +580,16 @@ class DDLLineageAnalyzer:
                 }
                 for cl in self.col_lineage
             ],
+            "flows": [
+                {
+                    "source":  f.source,
+                    "target":  f.target,
+                    "type":    f.edge_type,
+                    "via":     f.via,
+                    "details": f.details,
+                }
+                for f in flows
+            ],
             "cycles":     cycles,
             "topo_order": topo,
             "stats": {
@@ -503,7 +615,11 @@ class DDLLineageAnalyzer:
             lines.append(f"  {t}s  ({len(objs)})")
             for o in sorted(objs, key=lambda x: x["name"]):
                 pfx = f"{o['schema']}." if o["schema"] else ""
-                lines.append(f"    * {pfx}{o['name']}")
+                marks = (["TEMP"] if o.get("temporary") else []) + (
+                    [f"created in {o['parent']}"] if o.get("parent") else []
+                )
+                mark = f"  [{', '.join(marks)}]" if marks else ""
+                lines.append(f"    * {pfx}{o['name']}{mark}")
                 for c in o.get("columns", [])[:6]:
                     flags = " ".join(f for f in [
                         "PK" if c["pk"] else "",
@@ -541,6 +657,16 @@ class DDLLineageAnalyzer:
                 lines.append(
                     f"    {cl['src_table']}.{cl['src_col']:24} ->  "
                     f"{cl['tgt_table']}.{cl['tgt_col']}  (via {cl['via']})"
+                )
+            lines.append("")
+
+        if result.get("flows"):
+            lines.append(f"  Data flows in function bodies  ({len(result['flows'])})")
+            lines.append("  " + "-" * 52)
+            for f in sorted(result["flows"], key=lambda x: (x["via"], x["source"], x["target"])):
+                detail = f" ({f['details']})" if f.get("details") else ""
+                lines.append(
+                    f"    {f['source']:24} ==[{f['type']}{detail}]==> {f['target']}  (in {f['via']})"
                 )
             lines.append("")
 
@@ -582,6 +708,9 @@ class DDLLineageAnalyzer:
             "PROCEDURE":         'fillcolor="#FAEEDA" color="#854F0B" fontcolor="#633806"',
         }
         cycle_nodes = {n for cyc in result.get("cycles", []) for n in cyc}
+        groups = _function_groups(result)
+        grouped = {m for members in groups.values() for m in members}
+        node_lines: dict[str, str] = {}
 
         for o in sorted(result["objects"], key=lambda x: x["name"]):
             col_lines = []
@@ -595,7 +724,16 @@ class DDLLineageAnalyzer:
             )
             style = node_styles.get(o["type"], "")
             border = 'penwidth=2.5 color=red' if o["name"] in cycle_nodes else ""
-            lines.append(f'  "{o["name"]}" [label="{label}" {style} {border}];')
+            node_lines[o["name"]] = f'"{o["name"]}" [label="{label}" {style} {border}];'
+
+        for name, line in node_lines.items():
+            if name not in grouped:
+                lines.append(f"  {line}")
+        for fn, members in groups.items():
+            lines.append(f'  subgraph "cluster_{fn}" {{')
+            lines.append(f'    label="ƒ {fn}"; style="rounded,dashed"; color="#E8A33D"; fontcolor="#B5741A";')
+            lines.extend(f"    {node_lines[m]}" for m in members)
+            lines.append("  }")
 
         lines.append("")
         edge_styles = {
@@ -618,6 +756,16 @@ class DDLLineageAnalyzer:
                 f' [{style} label="{e["type"]}{detail}{col_lbl}"];'
             )
 
+        if result.get("flows"):
+            lines.append("")
+            lines.append("  // data flow inside function bodies")
+            for f in result["flows"]:
+                label = f"flow {f['details']}" if f.get("details") else "flow"
+                lines.append(
+                    f'  "{f["source"]}" -> "{f["target"]}"'
+                    f' [color="#E8A33D" penwidth=1.6 style=bold label="{label}"];'
+                )
+
         if result.get("cycles"):
             lines.append("")
             for cyc in result["cycles"]:
@@ -632,8 +780,16 @@ class DDLLineageAnalyzer:
     def to_mermaid(self, result: dict) -> str:
         """Mermaid flowchart (paste into mermaid.live or any Markdown renderer)."""
         lines = ["graph LR"]
+        groups = _function_groups(result)
+        grouped = {m for members in groups.values() for m in members}
+        types = {o["name"]: o["type"] for o in result["objects"]}
         for o in sorted(result["objects"], key=lambda x: x["name"]):
-            lines.append(f'  {o["name"]}["{o["name"]}\\n{o["type"]}"]')
+            if o["name"] not in grouped:
+                lines.append(f'  {o["name"]}["{o["name"]}\\n{o["type"]}"]')
+        for fn, members in groups.items():
+            lines.append(f'  subgraph {fn}_group["ƒ {fn}"]')
+            lines.extend(f'    {m}["{m}\\n{types[m]}"]' for m in members)
+            lines.append("  end")
         labels = {
             "FK":       "FK",
             "READ":     "reads",
@@ -645,6 +801,9 @@ class DDLLineageAnalyzer:
             if e.get("details"):
                 lbl = f"{lbl} ({e['details']})"
             lines.append(f'  {e["source"]} -->|"{lbl}"| {e["target"]}')
+        for f in result.get("flows", []):
+            lbl = f.get("details") or f["type"].lower()
+            lines.append(f'  {f["source"]} ==>|"{lbl}"| {f["target"]}')
         if result.get("cycles"):
             lines.append("\n%% WARNING: Circular dependencies detected:")
             for cyc in result["cycles"]:
@@ -655,3 +814,13 @@ class DDLLineageAnalyzer:
         """JSON serialisation of the full result dict."""
         import json
         return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def _function_groups(result: dict) -> dict[str, list[str]]:
+    """Function/procedure -> [itself, tables created in its body], for clustered output."""
+    groups: dict[str, list[str]] = defaultdict(list)
+    names = {o["name"] for o in result["objects"]}
+    for o in sorted(result["objects"], key=lambda x: x["name"]):
+        if o.get("parent") and o["parent"] in names:
+            groups[o["parent"]].append(o["name"])
+    return {fn: [fn, *tables] for fn, tables in sorted(groups.items())}

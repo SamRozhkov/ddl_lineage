@@ -305,6 +305,190 @@ class TestColumnParsing:
         assert [c["name"] for c in fn["columns"]] == ["id", "email"]
 
 
+# DDL as PostgreSQL itself dumps it (pg_get_constraintdef / format_type)
+PG_CATALOG_DDL = """
+CREATE TABLE s.customers (
+    id integer NOT NULL DEFAULT nextval('s.customers_id_seq'::regclass),
+    email character varying(255) NOT NULL,
+    CONSTRAINT customers_email_key UNIQUE (email),
+    CONSTRAINT customers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE s.vip_customers (
+    discount numeric(5,2) DEFAULT 0
+) INHERITS (s.customers);
+CREATE TABLE s.order_items (
+    order_id integer NOT NULL,
+    line_no integer NOT NULL,
+    price numeric(10,2) NOT NULL,
+    status character varying(20) NOT NULL DEFAULT 'new'::character varying,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    CONSTRAINT order_items_pkey PRIMARY KEY (order_id, line_no)
+);
+CREATE TABLE s.item_returns (
+    id integer NOT NULL,
+    order_id integer NOT NULL,
+    line_no integer NOT NULL,
+    customer_id integer,
+    CONSTRAINT item_returns_fkey FOREIGN KEY (order_id, line_no) REFERENCES s.order_items(order_id, line_no),
+    CONSTRAINT item_returns_customer_fkey FOREIGN KEY (customer_id) REFERENCES s.customers(id)
+);
+"""
+
+
+def column(result, table, name):
+    obj = next(o for o in result["objects"] if o["name"] == table)
+    return next(c for c in obj["columns"] if c["name"] == name)
+
+
+class TestCatalogStyleDDL:
+    def test_multi_word_and_precision_types(self):
+        _, r = make(PG_CATALOG_DDL)
+        assert column(r, "customers", "email")["type"] == "CHARACTER VARYING(255)"
+        assert column(r, "order_items", "price")["type"] == "NUMERIC(10,2)"
+        assert column(r, "order_items", "created_at")["type"] == "TIMESTAMP WITHOUT TIME ZONE"
+        assert column(r, "vip_customers", "discount")["type"] == "NUMERIC(5,2)"
+
+    def test_defaults_keep_literal_without_cast(self):
+        _, r = make(PG_CATALOG_DDL)
+        assert column(r, "order_items", "status")["default"] == "new"
+        assert column(r, "order_items", "created_at")["default"] == "now()"
+        assert column(r, "order_items", "status")["nullable"] is False
+
+    def test_table_level_primary_key_and_unique(self):
+        _, r = make(PG_CATALOG_DDL)
+        assert column(r, "customers", "id")["pk"] is True
+        assert column(r, "customers", "email")["unique"] is True
+        assert column(r, "order_items", "order_id")["pk"] is True
+        assert column(r, "order_items", "line_no")["pk"] is True
+        assert column(r, "order_items", "price")["pk"] is False
+
+    def test_table_level_foreign_keys(self):
+        _, r = make(PG_CATALOG_DDL)
+        assert column(r, "item_returns", "order_id")["fk_to"] == "order_items.order_id"
+        assert column(r, "item_returns", "line_no")["fk_to"] == "order_items.line_no"
+        assert column(r, "item_returns", "customer_id")["fk_to"] == "customers.id"
+        fks = [e for e in r["edges"] if e["source"] == "item_returns" and e["type"] == "FK"]
+        assert sorted((e["target"], e["details"]) for e in fks) == [
+            ("customers", "customer_id -> customers.id"),
+            ("order_items", "order_id -> order_items.order_id, line_no -> order_items.line_no"),
+        ]
+
+    def test_inherits_after_column_list(self):
+        _, r = make(PG_CATALOG_DDL)
+        assert edge_exists(r, "vip_customers", "customers", "INHERITS")
+
+    def test_inherits_multiple_parents(self):
+        _, r = make("CREATE TABLE c (x INT) INHERITS (a, s.b);")
+        assert edge_exists(r, "c", "a", "INHERITS")
+        assert edge_exists(r, "c", "b", "INHERITS")
+
+    def test_inline_reference_with_schema(self):
+        _, r = make("CREATE TABLE a (id INT PRIMARY KEY); CREATE TABLE b (a_id INT REFERENCES s.a(id));")
+        assert column(r, "b", "a_id")["fk_to"] == "a.id"
+        assert edge_exists(r, "b", "a", "FK")
+        assert not any(o["name"] == "s" for o in r["objects"])
+
+    def test_alter_table_foreign_key_sets_column_and_details(self):
+        ddl = """
+        CREATE TABLE a (id INT PRIMARY KEY);
+        CREATE TABLE b (id INT, a_id INT);
+        ALTER TABLE ONLY s.b ADD CONSTRAINT b_fk FOREIGN KEY (a_id) REFERENCES s.a(id);
+        """
+        _, r = make(ddl)
+        assert column(r, "b", "a_id")["fk_to"] == "a.id"
+        fks = [e for e in r["edges"] if e["source"] == "b" and e["type"] == "FK"]
+        assert [(e["target"], e["details"]) for e in fks] == [("a", "a_id -> a.id")]
+
+
+MYSQL_ROUTINES_DDL = """
+CREATE TABLE cart (id INT PRIMARY KEY);
+CREATE TABLE cart_items (cart_id INT, qty INT);
+CREATE TABLE orders (id INT, total INT);
+
+CREATE PROCEDURE checkout(IN p_cart_id INT)
+BEGIN
+  DECLARE v_total INT;
+  SELECT SUM(qty) INTO v_total FROM cart_items WHERE cart_id = p_cart_id;
+  IF v_total > 0 THEN
+    INSERT INTO orders(total) VALUES (CASE WHEN v_total > 10 THEN v_total ELSE 0 END);
+  END IF;
+  DELETE FROM cart_items WHERE cart_id = p_cart_id;
+  DELETE FROM cart WHERE id = p_cart_id;
+END;
+
+CREATE FUNCTION cart_size(p INT) RETURNS INT
+READS SQL DATA
+BEGIN
+  RETURN (SELECT COUNT(*) FROM cart_items WHERE cart_id = p);
+END;
+
+BEGIN;
+CREATE VIEW big_orders AS SELECT id FROM orders WHERE total > 100;
+"""
+
+
+class TestMySQLRoutines:
+    def test_procedure_body_is_not_split_on_semicolons(self):
+        _, r = make(MYSQL_ROUTINES_DDL)
+        assert edge_exists(r, "checkout", "cart_items", "WRITE")
+        assert edge_exists(r, "checkout", "cart", "WRITE")
+        assert edge_exists(r, "checkout", "orders", "WRITE")
+        assert edge_exists(r, "checkout", "cart_items", "READ")
+
+    def test_function_and_following_statements(self):
+        _, r = make(MYSQL_ROUTINES_DDL)
+        assert edge_exists(r, "cart_size", "cart_items", "READ")
+        assert edge_exists(r, "big_orders", "orders", "READ")
+
+    def test_definer_and_algorithm_options(self):
+        ddl = """
+        CREATE TABLE `t` (`id` int NOT NULL, PRIMARY KEY (`id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `v` AS
+            select `t`.`id` AS `id` from `t`;
+        CREATE DEFINER=`app`@`10.0.%` PROCEDURE `p`(IN x INT)
+        BEGIN
+          DELETE FROM `t` WHERE id = x;
+        END;
+        CREATE DEFINER=CURRENT_USER FUNCTION `f`(x INT) RETURNS int
+            READS SQL DATA
+        BEGIN
+          RETURN (SELECT COUNT(*) FROM `t`);
+        END;
+        """
+        _, r = make(ddl)
+        assert {(o["name"], o["type"]) for o in r["objects"]} == {
+            ("t", "TABLE"), ("v", "VIEW"), ("p", "PROCEDURE"), ("f", "FUNCTION"),
+        }
+        assert column(r, "t", "id")["pk"] is True
+        assert edge_exists(r, "v", "t", "READ")
+        assert edge_exists(r, "p", "t", "WRITE")
+        assert edge_exists(r, "f", "t", "READ")
+
+    def test_update_with_alias_and_join(self):
+        ddl = """
+        CREATE PROCEDURE p()
+        BEGIN
+          UPDATE products AS pr SET pr.stock = 0;
+          UPDATE stock_levels s JOIN order_items oi ON oi.product_id = s.id SET s.qty = s.qty - oi.quantity;
+          SELECT id FROM orders FOR UPDATE;
+          INSERT INTO audit(id) VALUES (1) ON DUPLICATE KEY UPDATE id = id;
+        END;
+        """
+        _, r = make(ddl)
+        assert edge_exists(r, "p", "products", "WRITE")
+        assert edge_exists(r, "p", "stock_levels", "WRITE")
+        assert flow_exists(r, "order_items", "stock_levels", "WRITE")
+        writes = {e["target"] for e in r["edges"] if e["type"] == "WRITE"}
+        assert writes == {"products", "stock_levels", "audit"}
+
+    def test_shipped_mysql_example(self):
+        from pathlib import Path
+        ddl = (Path(__file__).resolve().parents[1] / "examples" / "mysql_style.sql").read_text()
+        _, r = make(ddl)
+        assert edge_exists(r, "checkout", "cart_items", "WRITE")
+        assert edge_exists(r, "checkout", "cart", "WRITE")
+
+
 # ---------------------------------------------------------------------------
 # FK edges
 # ---------------------------------------------------------------------------
@@ -359,6 +543,36 @@ class TestReadEdges:
 # WRITE edges
 # ---------------------------------------------------------------------------
 
+class TestReadReferenceForms:
+    def reads(self, select):
+        _, r = make(f"CREATE VIEW v AS {select};")
+        return sorted(e["target"] for e in r["edges"] if e["type"] == "READ")
+
+    def test_comma_separated_from_list(self):
+        assert self.reads("SELECT * FROM a, s.b bb, c AS cc WHERE a.id = bb.id") == ["a", "b", "c"]
+
+    def test_parenthesised_join_tree(self):
+        # MySQL rewrites stored views like this
+        sql = (
+            "select `o`.`id` AS `id` from ((`orders` `o` join `customers` `c` on((`c`.`id` = `o`.`customer_id`))) "
+            "join `lineage_it`.`payments` `p` on((`p`.`order_id` = `o`.`id`)))"
+        )
+        assert self.reads(sql) == ["customers", "orders", "payments"]
+
+    def test_join_with_nested_join(self):
+        assert self.reads("SELECT x FROM t JOIN (u JOIN w ON u.id = w.id) ON true") == ["t", "u", "w"]
+
+    def test_subquery_is_not_a_table(self):
+        assert self.reads("SELECT x FROM (SELECT id FROM t) sub, (VALUES (1)) vals(x)") == ["t"]
+
+    def test_from_inside_functions_is_not_a_table(self):
+        sql = (
+            "SELECT EXTRACT(YEAR FROM created_at) y, SUBSTRING(name FROM 2 FOR 3) s, "
+            "TRIM(BOTH ' ' FROM name) t2 FROM orders"
+        )
+        assert self.reads(sql) == ["orders"]
+
+
 class TestWriteEdges:
     def test_insert_write(self):
         _, r = make(BASIC_DDL)
@@ -375,6 +589,103 @@ class TestWriteEdges:
             if e["source"] == "process_order" and e["target"] == "payments" and e["type"] == "WRITE"
         )
         assert pay_edge["details"] == "INSERT"
+
+
+# ---------------------------------------------------------------------------
+# Tables created inside functions + statement-level flows
+# ---------------------------------------------------------------------------
+
+FN_TABLES_DDL = """
+CREATE TABLE orders (id SERIAL PRIMARY KEY, amount DECIMAL(10,2));
+CREATE TABLE reports (total DECIMAL(12,2));
+
+CREATE FUNCTION build_stage() RETURNS VOID AS $$
+BEGIN
+    CREATE TEMP TABLE stage_orders AS
+        SELECT id, amount FROM orders;
+    INSERT INTO reports(total) SELECT SUM(amount) FROM stage_orders;
+    UPDATE orders SET amount = 0;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION use_stage() RETURNS INT AS $$
+BEGIN
+    RETURN (SELECT COUNT(*) FROM stage_orders);
+END;
+$$ LANGUAGE plpgsql;
+"""
+
+
+def flow_exists(result, src, tgt, ftype=None):
+    return any(
+        f["source"] == src and f["target"] == tgt and (ftype is None or f["type"] == ftype)
+        for f in result["flows"]
+    )
+
+
+class TestFunctionTables:
+    def test_table_created_in_function_has_parent(self):
+        _, r = make(FN_TABLES_DDL)
+        obj = next(o for o in r["objects"] if o["name"] == "stage_orders")
+        assert obj["type"] == "TABLE"
+        assert obj["temporary"] is True
+        assert obj["parent"] == "build_stage"
+        assert [c["name"] for c in obj["columns"]] == ["id", "amount"]
+
+    def test_top_level_tables_have_no_parent(self):
+        _, r = make(FN_TABLES_DDL)
+        orders = next(o for o in r["objects"] if o["name"] == "orders")
+        assert orders["parent"] == ""
+
+    def test_top_level_definition_wins_over_function(self):
+        ddl = """
+        CREATE FUNCTION f() RETURNS VOID AS $$
+        BEGIN
+            CREATE TABLE IF NOT EXISTS t (id INT);
+        END;
+        $$ LANGUAGE plpgsql;
+        CREATE TABLE t (id INT, name TEXT);
+        """
+        _, r = make(ddl)
+        t = next(o for o in r["objects"] if o["name"] == "t")
+        assert t["parent"] == ""
+        assert len(t["columns"]) == 2
+
+    def test_create_in_function_is_write_edge(self):
+        _, r = make(FN_TABLES_DDL)
+        assert edge_exists(r, "build_stage", "stage_orders", "WRITE")
+
+    def test_flow_from_source_into_created_table(self):
+        _, r = make(FN_TABLES_DDL)
+        assert flow_exists(r, "orders", "stage_orders", "WRITE")
+
+    def test_flow_between_tables_inside_function(self):
+        _, r = make(FN_TABLES_DDL)
+        assert flow_exists(r, "stage_orders", "reports", "WRITE")
+        assert not flow_exists(r, "build_stage", "reports")
+
+    def test_write_without_source_flows_from_function(self):
+        _, r = make(FN_TABLES_DDL)
+        assert flow_exists(r, "build_stage", "orders", "WRITE")
+
+    def test_read_without_target_flows_into_function(self):
+        _, r = make(FN_TABLES_DDL)
+        assert flow_exists(r, "stage_orders", "use_stage", "READ")
+
+    def test_update_from_flows_source_to_target(self):
+        ddl = """
+        CREATE FUNCTION f() RETURNS VOID AS $$
+        BEGIN
+            UPDATE products SET stock = stock - oi.quantity
+            FROM order_items oi WHERE oi.product_id = products.id;
+            DELETE FROM carts;
+        END;
+        $$ LANGUAGE plpgsql;
+        """
+        _, r = make(ddl)
+        assert flow_exists(r, "order_items", "products", "WRITE")
+        assert flow_exists(r, "f", "carts", "WRITE")
+        assert not flow_exists(r, "carts", "carts")
 
 
 # ---------------------------------------------------------------------------
@@ -452,6 +763,17 @@ class TestOutputFormats:
         assert "Lineage edges" in out
         assert "users" in out
 
+    def test_to_text_shows_function_tables_and_flows(self):
+        a, r = make(FN_TABLES_DDL)
+        out = a.to_text(r)
+        assert "stage_orders  [TEMP, created in build_stage]" in out
+        assert "Data flows" in out
+        assert "orders" in out.split("Data flows")[1].split("stage_orders")[0]
+
+    def test_to_text_without_flows_has_no_flow_section(self):
+        a, r = make("CREATE TABLE t (id INT); CREATE VIEW v AS SELECT id FROM t;")
+        assert "Data flows" not in a.to_text(r)
+
     def test_to_json(self):
         import json
         a, r = make(BASIC_DDL)
@@ -471,6 +793,28 @@ class TestOutputFormats:
         out = a.to_mermaid(r)
         assert "graph LR" in out
         assert "users" in out
+
+    def test_to_dot_groups_function_tables_and_draws_flows(self):
+        a, r = make(FN_TABLES_DDL)
+        out = a.to_dot(r)
+        cluster = out.split('subgraph "cluster_build_stage"')[1].split("}")[0]
+        assert '"build_stage" [label=' in cluster
+        assert '"stage_orders" [label=' in cluster
+        assert '"orders" -> "stage_orders" [' in out
+        assert 'label="flow CREATE"' in out
+
+    def test_to_dot_without_flows_has_no_clusters(self):
+        a, r = make("CREATE TABLE t (id INT); CREATE VIEW v AS SELECT id FROM t;")
+        assert "subgraph" not in a.to_dot(r)
+
+    def test_to_mermaid_groups_function_tables_and_draws_flows(self):
+        a, r = make(FN_TABLES_DDL)
+        out = a.to_mermaid(r)
+        group = out.split('subgraph build_stage_group["ƒ build_stage"]')[1].split("  end")[0]
+        assert "build_stage[" in group
+        assert "stage_orders[" in group
+        assert '  orders ==>|"CREATE"| stage_orders' in out
+        assert '  stage_orders ==>|"INSERT"| reports' in out
 
 
 # ---------------------------------------------------------------------------

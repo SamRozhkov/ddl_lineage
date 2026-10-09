@@ -42,6 +42,7 @@ class DDLObject:
     columns: list = field(default_factory=list)   # list[Column]
     temporary: bool = False
     raw: str = ""           # first 100 chars of the original statement
+    parent: str = ""        # function / procedure whose body creates this table
 
     def __repr__(self) -> str:
         schema_pfx = f"{self.schema}." if self.schema else ""

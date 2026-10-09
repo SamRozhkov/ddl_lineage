@@ -5,6 +5,8 @@ export type DDLObject = {
     type: string;
     schema: string;
     temporary?: boolean;
+    /** Function/procedure whose body creates this table */
+    parent?: string;
     columns: Array<{
         name: string;
         type: string;
@@ -24,9 +26,19 @@ export type LineageEdge = {
     details: string;
 };
 
+/** Statement-level data flow inside a function body: source -> target */
+export type LineageFlow = {
+    source: string;
+    target: string;
+    type: string;
+    via: string;
+    details: string;
+};
+
 export type AnalysisResult = {
     objects: DDLObject[];
     edges: LineageEdge[];
+    flows?: LineageFlow[];
     cycles: string[][];
     topo_order: string[];
     stats: {

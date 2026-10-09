@@ -2,10 +2,20 @@ import '@gravity-ui/uikit/styles/fonts.css';
 import '@gravity-ui/uikit/styles/styles.css';
 import './App.css';
 
-import type {Graph, TBlock, TBlockGeometrySnapshot, TConnection, TGraphColors} from '@gravity-ui/graph';
-import {EAnchorType, ECanDrag, GraphState, useLayeredLayout} from '@gravity-ui/graph';
-import type {UseLayeredLayoutParams} from '@gravity-ui/graph';
-import {GraphBlock, GraphCanvas, useGraph} from '@gravity-ui/graph/react';
+import type {
+    BlockState,
+    Graph,
+    LayerPublicProps,
+    TBlock,
+    TBlockGeometrySnapshot,
+    TConnection,
+    TGraphColors,
+    TGroup,
+    TGroupProps,
+    UseLayeredLayoutParams,
+} from '@gravity-ui/graph';
+import {BlockGroups, EAnchorType, ECanDrag, GraphState, Group, useLayeredLayout} from '@gravity-ui/graph';
+import {GraphBlock, GraphCanvas, useGraph, useLayer} from '@gravity-ui/graph/react';
 import {ArrowsExpand, ChevronLeft, ChevronRight, ChevronsCollapseUpRight, ClockArrowRotateLeft, Database, Folder, Gear, Moon, Plus, Sun} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
 import {Button, Icon, Theme, ThemeProvider, Toaster, ToasterComponent, ToasterProvider, useToaster} from '@gravity-ui/uikit';
@@ -702,6 +712,8 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
         graph.setColors(graphThemeColors(isDark));
     }, [graph, isDark]);
 
+    useLayer(graph, FunctionGroupsLayer, FUNCTION_GROUPS_LAYER_PROPS);
+
     // Block dimensions depend on object count
     const blockDims = React.useMemo(() => {
         const count = result?.objects.length ?? 0;
@@ -711,32 +723,67 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
         };
     }, [result]);
 
-    // Input for the built-in layered layout algorithm
+    // Functions/procedures as groups + data-flow links
+    const view = React.useMemo(() => (result ? buildLineageView(result, blockDims) : null), [result, blockDims]);
+
+    // Input for the built-in layered layout algorithm. Each function group is
+    // collapsed into one super-node so that groups never overlap other blocks.
     const layoutInput = React.useMemo((): UseLayeredLayoutParams => {
-        if (!result) return {blocks: [], connections: []};
+        if (!result || !view) return {blocks: [], connections: []};
         const count = result.objects.length;
-        const objNames = new Set(result.objects.map((o) => o.name));
+        const layoutNodeId = (name: string) => {
+            const owner = view.groupOf.get(name);
+            return owner ? groupLayoutId(owner) : name;
+        };
+
+        const blocks: UseLayeredLayoutParams['blocks'] = [];
+        view.groups.forEach((group) => {
+            blocks.push({id: groupLayoutId(group.owner), width: group.width, height: group.height});
+        });
+        view.nodes
+            .filter((name) => !view.groupOf.has(name))
+            .forEach((name) => blocks.push({id: name, width: blockDims.width, height: blockDims.height}));
+
+        const seen = new Set<string>();
+        const connections: UseLayeredLayoutParams['connections'] = [];
+        view.links.forEach((l) => {
+            const source = layoutNodeId(l.from);
+            const target = layoutNodeId(l.to);
+            const key = `${source}->${target}`;
+            if (source === target || seen.has(key)) return;
+            seen.add(key);
+            connections.push({id: `layout-${connections.length}`, sourceBlockId: source, targetBlockId: target});
+        });
+
+        // The built-in level assignment drops every node on a cycle to level 0
+        // (e.g. a function reading and updating the same table), so pass our own
+        const levels = computeLayerLevels(blocks.map((b) => String(b.id)), connections);
+        for (const block of blocks) {
+            block.level = levels.get(String(block.id));
+        }
+
         return {
-            blocks: result.objects.map((obj) => ({
-                id: obj.name,
-                width: blockDims.width,
-                height: blockDims.height,
-            })),
-            connections: result.edges
-                .filter((e) => objNames.has(e.source) && objNames.has(e.target))
-                .map((e, i) => ({
-                    id: `layout-${i}`,
-                    sourceBlockId: e.source,
-                    targetBlockId: e.target,
-                })),
+            blocks,
+            connections,
             layoutOptions: {
                 nodeHorizontalGap: count > 80 ? 48 : count > 32 ? 64 : 80,
                 nodeVerticalGap: count > 80 ? 100 : count > 32 ? 116 : 136,
             },
         };
-    }, [result, blockDims]);
+    }, [result, view, blockDims]);
 
-    const {result: layoutResult, isLoading: layoutLoading} = useLayeredLayout(layoutInput);
+    const {result: rawLayoutResult, isLoading: layoutLoading} = useLayeredLayout(layoutInput);
+
+    // The layered layout uses a fixed layer step, so wide/tall group nodes would
+    // overlap their neighbours. Re-space layers and nodes using real sizes.
+    const layoutResult = React.useMemo(
+        () =>
+            rawLayoutResult && {
+                ...rawLayoutResult,
+                blocks: packLayers(rawLayoutResult.blocks, layoutInput.blocks),
+            },
+        [rawLayoutResult, layoutInput.blocks],
+    );
 
     // Capture block positions when user drags them
     React.useEffect(() => {
@@ -756,19 +803,26 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
 
     // Build visual entities: layout positions + user overrides
     const graphEntities = React.useMemo(() => {
-        if (!result) return {blocks: [] as LineageGraphBlock[], connections: [] as TConnection[]};
+        if (!result || !view) return {blocks: [] as LineageGraphBlock[], connections: [] as TConnection[]};
 
         const store = userPositionsRef.current;
         const savedPos = store.forResult === result ? store.map : new Map<string, {x: number; y: number}>();
+        const visible = new Set(view.nodes);
 
-        const blocks: LineageGraphBlock[] = result.objects.map((object) => {
-            const pos =
-                savedPos.get(object.name) ??
-                layoutResult?.blocks?.[object.name] ??
-                {x: 0, y: 0};
+        const blocks: LineageGraphBlock[] = result.objects.filter((o) => visible.has(o.name)).map((object) => {
+            const owner = view.groupOf.get(object.name);
+            let layoutPos = layoutResult?.blocks?.[object.name];
+            if (owner) {
+                const group = view.groups.get(owner)!;
+                const groupPos = layoutResult?.blocks?.[groupLayoutId(owner)];
+                const offset = group.offsets.get(object.name)!;
+                layoutPos = groupPos && {x: groupPos.x + offset.x, y: groupPos.y + offset.y};
+            }
+            const pos = savedPos.get(object.name) ?? layoutPos ?? {x: 0, y: 0};
             return {
                 id: object.name,
                 is: 'lineage-object',
+                group: owner,
                 x: pos.x,
                 y: pos.y,
                 width: blockDims.width,
@@ -788,21 +842,20 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
             };
         });
 
-        const objectNames = new Set(result.objects.map((o) => o.name));
-        const connections: TConnection[] = result.edges
-            .filter((e) => objectNames.has(e.source) && objectNames.has(e.target))
-            .map((e, i) => ({
-                id: `${e.type}-${e.target}-${e.source}-${i}`,
-                sourceBlockId: e.target,
-                sourceAnchorId: `${e.target}-out`,
-                targetBlockId: e.source,
-                targetAnchorId: `${e.source}-in`,
-                label: e.details ? `${e.type} ${e.details}` : e.type,
-                styles: edgeStyles(e.type),
+        const connections: TConnection[] = view.links
+            .filter((l) => visible.has(l.from) && visible.has(l.to))
+            .map((l, i) => ({
+                id: `${l.type}-${l.from}-${l.to}-${i}`,
+                sourceBlockId: l.from,
+                sourceAnchorId: `${l.from}-out`,
+                targetBlockId: l.to,
+                targetAnchorId: `${l.to}-in`,
+                label: linkLabel(l, view.groupOf),
+                styles: edgeStyles(l.type),
             }));
 
         return {blocks, connections};
-    }, [result, layoutResult, blockDims]);
+    }, [result, view, layoutResult, blockDims]);
 
     const blockIds = React.useMemo(
         () => graphEntities.blocks.map((block) => block.id),
@@ -979,6 +1032,288 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
         </div>
     );
 };
+
+const GROUP_OWNER_TYPES = new Set(['FUNCTION', 'PROCEDURE']);
+const GROUP_PADDING = {top: 44, right: 24, bottom: 24, left: 24};
+const GROUP_INNER_GAP = {x: 72, y: 24};
+
+type FunctionGroupLayout = {
+    owner: string;
+    /** Blocks drawn inside the group: tables it creates (+ the function block when linked) */
+    members: string[];
+    /** Block offsets relative to the group's layout node (top-left incl. padding) */
+    offsets: Map<string, {x: number; y: number}>;
+    width: number;
+    height: number;
+};
+
+/** Data-flow link: `from` is where the data comes from */
+type LineageLink = {from: string; to: string; type: string; details: string; via?: string};
+
+type LineageView = {
+    /** Objects rendered as blocks */
+    nodes: string[];
+    links: LineageLink[];
+    groups: Map<string, FunctionGroupLayout>;
+    /** Block name -> owning function group */
+    groupOf: Map<string, string>;
+};
+
+type TFunctionGroup = TGroup & {title: string};
+
+const groupLayoutId = (owner: string) => `group:${owner}`;
+
+const PACK_GAP = {x: 96, y: 40};
+
+/** Longest-path levels on the graph with DFS back edges (cycles) ignored */
+function computeLayerLevels(
+    ids: string[],
+    connections: UseLayeredLayoutParams['connections'],
+): Map<string, number> {
+    const out = new Map(ids.map((id) => [id, [] as string[]]));
+    connections.forEach((c) => out.get(String(c.sourceBlockId))?.push(String(c.targetBlockId)));
+
+    // DFS post-order gives a topological order of the graph without back edges
+    const state = new Map<string, 'active' | 'done'>();
+    const dagOut = new Map(ids.map((id) => [id, [] as string[]]));
+    const order: string[] = [];
+    const visit = (id: string) => {
+        state.set(id, 'active');
+        out.get(id)!.forEach((next) => {
+            if (!out.has(next) || state.get(next) === 'active') return;
+            dagOut.get(id)!.push(next);
+            if (!state.has(next)) visit(next);
+        });
+        state.set(id, 'done');
+        order.push(id);
+    };
+    ids.forEach((id) => !state.has(id) && visit(id));
+
+    const level = new Map(ids.map((id) => [id, 0]));
+    order.reverse().forEach((id) => {
+        dagOut.get(id)!.forEach((next) => level.set(next, Math.max(level.get(next)!, level.get(id)! + 1)));
+    });
+    return level;
+}
+
+/** Shift layers (same x) and nodes inside each layer so that no two nodes overlap */
+function packLayers(
+    positions: Record<string, {x: number; y: number}>,
+    nodes: UseLayeredLayoutParams['blocks'],
+): Record<string, {x: number; y: number}> {
+    const sizes = new Map(nodes.map((n) => [String(n.id), {width: n.width ?? 0, height: n.height ?? 0}]));
+    const layers = new Map<number, string[]>();
+    Object.entries(positions).forEach(([id, pos]) => {
+        if (!sizes.has(id)) return;
+        const key = Math.round(pos.x);
+        if (!layers.has(key)) layers.set(key, []);
+        layers.get(key)!.push(id);
+    });
+
+    const packed: Record<string, {x: number; y: number}> = {...positions};
+    let shiftX = 0;
+    let cursorX = -Infinity;
+    [...layers.keys()]
+        .sort((a, b) => a - b)
+        .forEach((layerX) => {
+            const ids = layers.get(layerX)!.sort((a, b) => positions[a].y - positions[b].y);
+            const x = Math.max(layerX + shiftX, cursorX);
+            shiftX = x - layerX;
+            cursorX = x + Math.max(...ids.map((id) => sizes.get(id)!.width)) + PACK_GAP.x;
+
+            let cursorY = -Infinity;
+            ids.forEach((id) => {
+                const y = Math.max(positions[id].y, cursorY);
+                packed[id] = {x, y};
+                cursorY = y + sizes.get(id)!.height + PACK_GAP.y;
+            });
+        });
+    return packed;
+}
+
+/**
+ * Turn the analysis result into what the graph draws.
+ *
+ * Every function/procedure is a group. Tables created inside its body
+ * (`parent`) are drawn in the group; everything it only reads or writes stays
+ * outside. Links come from statement-level `flows`, so data goes table → table
+ * (also across groups). The function block itself is shown only when a flow
+ * starts or ends at the function (a write with no source, a read with no
+ * target) or the group would otherwise be empty.
+ */
+function buildLineageView(result: AnalysisResult, blockDims: {width: number; height: number}): LineageView {
+    const names = new Set(result.objects.map((o) => o.name));
+    const owners = new Set(
+        result.objects.filter((o) => GROUP_OWNER_TYPES.has(o.type.toUpperCase())).map((o) => o.name),
+    );
+
+    const links: LineageLink[] = [];
+    const seen = new Set<string>();
+    const addLink = (link: LineageLink) => {
+        const key = `${link.from}|${link.to}|${link.type}|${link.details}`;
+        if (link.from === link.to || seen.has(key) || !names.has(link.from) || !names.has(link.to)) return;
+        seen.add(key);
+        links.push(link);
+    };
+
+    // Function-level READ/WRITE edges are replaced by statement-level flows.
+    // Older saved results have no flows: fall back to the edges, oriented as data flow.
+    const hasFlows = Array.isArray(result.flows);
+    result.edges.forEach((e) => {
+        const fromFunction = owners.has(e.source) && (e.type === 'READ' || e.type === 'WRITE');
+        if (fromFunction && hasFlows) return;
+        if (fromFunction && e.type === 'WRITE') {
+            addLink({from: e.source, to: e.target, type: e.type, details: e.details});
+        } else {
+            // edge.source depends on edge.target, so data flows target -> source
+            addLink({from: e.target, to: e.source, type: e.type, details: e.details});
+        }
+    });
+    result.flows?.forEach((f) =>
+        addLink({from: f.source, to: f.target, type: f.type, details: f.details, via: f.via}),
+    );
+
+    const membersByOwner = new Map<string, string[]>([...owners].map((owner) => [owner, []]));
+    result.objects.forEach((o) => {
+        if (o.parent && owners.has(o.parent)) membersByOwner.get(o.parent)!.push(o.name);
+    });
+
+    const linked = new Set(links.flatMap((l) => [l.from, l.to]));
+    const groups = new Map<string, FunctionGroupLayout>();
+    const groupOf = new Map<string, string>();
+    membersByOwner.forEach((tables, owner) => {
+        const members = linked.has(owner) || !tables.length ? [...tables, owner] : tables;
+        const layout = layoutGroup(owner, members, links, blockDims);
+        groups.set(owner, layout);
+        members.forEach((member) => groupOf.set(member, owner));
+    });
+
+    const nodes = result.objects
+        .map((o) => o.name)
+        .filter((name) => !owners.has(name) || groups.get(name)!.members.includes(name));
+    return {nodes, links, groups, groupOf};
+}
+
+/** Name the function when a flow it performs runs entirely outside its group */
+function linkLabel(link: LineageLink, groupOf: Map<string, string>): string {
+    const label = link.details ? `${link.type} ${link.details}` : link.type;
+    const outsideGroup = link.via && groupOf.get(link.from) !== link.via && groupOf.get(link.to) !== link.via;
+    return outsideGroup ? `${label} · ƒ ${link.via}` : label;
+}
+
+/** Arrange group members in columns by data-flow depth inside the group */
+function layoutGroup(
+    owner: string,
+    members: string[],
+    links: LineageLink[],
+    blockDims: {width: number; height: number},
+): FunctionGroupLayout {
+    const inside = new Set(members);
+    const internal = links.filter((l) => inside.has(l.from) && inside.has(l.to));
+    const level = new Map(members.map((m) => [m, 0]));
+    // Longest-path levels; bounded passes keep cycles from looping forever
+    for (let pass = 0; pass < members.length; pass++) {
+        let changed = false;
+        internal.forEach((l) => {
+            const next = level.get(l.from)! + 1;
+            if (next > level.get(l.to)! && next < members.length) {
+                level.set(l.to, next);
+                changed = true;
+            }
+        });
+        if (!changed) break;
+    }
+
+    const columns: string[][] = [];
+    members.forEach((m) => {
+        const column = level.get(m)!;
+        columns[column] = [...(columns[column] ?? []), m];
+    });
+    const filled = columns.filter(Boolean);
+    const rowStep = blockDims.height + GROUP_INNER_GAP.y;
+    const colStep = blockDims.width + GROUP_INNER_GAP.x;
+    const maxRows = Math.max(...filled.map((col) => col.length));
+    const contentHeight = maxRows * rowStep - GROUP_INNER_GAP.y;
+
+    const offsets = new Map<string, {x: number; y: number}>();
+    filled.forEach((col, ci) => {
+        const top = (contentHeight - (col.length * rowStep - GROUP_INNER_GAP.y)) / 2;
+        col.forEach((m, ri) => {
+            offsets.set(m, {
+                x: GROUP_PADDING.left + ci * colStep,
+                y: GROUP_PADDING.top + top + ri * rowStep,
+            });
+        });
+    });
+
+    return {
+        owner,
+        members,
+        offsets,
+        width: GROUP_PADDING.left + filled.length * colStep - GROUP_INNER_GAP.x + GROUP_PADDING.right,
+        height: GROUP_PADDING.top + contentHeight + GROUP_PADDING.bottom,
+    };
+}
+
+class FunctionGroup extends Group<TFunctionGroup> {
+    // Group.define() subclasses the base Group, so styles are injected here instead
+    constructor(props: TGroupProps, parent: BlockGroups) {
+        super(
+            {
+                ...props,
+                style: {
+                    background: 'rgba(232, 163, 61, 0.07)',
+                    border: 'rgba(232, 163, 61, 0.55)',
+                    borderWidth: 1.5,
+                    selectedBackground: 'rgba(232, 163, 61, 0.14)',
+                    selectedBorder: '#ffc978',
+                    ...props.style,
+                },
+                geometry: {
+                    padding: [GROUP_PADDING.top, GROUP_PADDING.right, GROUP_PADDING.bottom, GROUP_PADDING.left],
+                    ...props.geometry,
+                },
+            },
+            parent,
+        );
+    }
+
+    protected override render() {
+        super.render();
+        const ctx = this.context.ctx;
+        const rect = this.getRect();
+        ctx.save();
+        ctx.fillStyle = '#e8a33d';
+        ctx.font = '600 14px "JetBrains Mono", ui-monospace, monospace';
+        ctx.textBaseline = 'top';
+        ctx.fillText(`ƒ ${this.state.title}`, rect.x + 16, rect.y + 14, rect.width - 32);
+        ctx.restore();
+    }
+}
+
+const FunctionGroupsLayer = BlockGroups.withBlockGrouping({
+    groupingFn: (blocks: BlockState[]) => {
+        const byGroup: Record<string, BlockState[]> = {};
+        blocks.forEach((block) => {
+            const group = block.asTBlock().group;
+            if (!group) return;
+            (byGroup[group] ??= []).push(block);
+        });
+        return byGroup;
+    },
+    mapToGroups: (key, {rect}): TFunctionGroup => ({
+        id: key,
+        title: key,
+        rect,
+        component: FunctionGroup as typeof Group,
+    }),
+});
+
+// LayerPublicProps can't infer props through withBlockGrouping's return type
+const FUNCTION_GROUPS_LAYER_PROPS = {
+    draggable: true,
+    updateBlocksOnDrag: true,
+} as LayerPublicProps<typeof FunctionGroupsLayer>;
 
 function edgeStyles(type: string): TConnection['styles'] {
     if (type === 'WRITE') {

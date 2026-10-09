@@ -205,6 +205,8 @@ def analyze():
                 'analysis': {
                     'objects': result['objects'],
                     'edges': result['edges'],
+                    'col_lineage': result.get('col_lineage', []),
+                    'flows': result.get('flows', []),
                     'cycles': result['cycles'],
                     'topo_order': result.get('topo_order', []),
                     'stats': result['stats'],
