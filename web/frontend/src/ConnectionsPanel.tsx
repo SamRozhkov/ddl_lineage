@@ -73,7 +73,12 @@ export const ConnectionsPanel: React.FC<Props> = ({
         if (savedConnections.length > 0) setShowForm(false);
     };
 
-    const canScan = !scanning && !!form.host && !!form.database && !!form.username && !!form.password;
+    const canScan =
+        !scanning &&
+        Boolean(form.host) &&
+        Boolean(form.database) &&
+        Boolean(form.username) &&
+        Boolean(form.password);
 
     return (
         <div className="side-panel">
@@ -108,7 +113,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 >
                                     <span className="conn-item__name">{conn.name}</span>
                                     <span className="conn-item__meta">
-                                        <span className={`edge type-${conn.type}`}>{conn.type}</span>
+                                        <span className={`edge type-${conn.type}`}>
+                                            {conn.type}
+                                        </span>
                                         &nbsp;{conn.host}:{conn.port} / {conn.database}
                                     </span>
                                 </div>
@@ -164,7 +171,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">{t('connections.form.dbType')}</label>
+                            <label className="conn-form__label">
+                                {t('connections.form.dbType')}
+                            </label>
                             <Select
                                 value={[form.type]}
                                 onUpdate={handleTypeChange}
@@ -179,7 +188,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
 
                         <div className="conn-form__row">
                             <div className="conn-form__field conn-form__field--grow">
-                                <label className="conn-form__label">{t('connections.form.host')}</label>
+                                <label className="conn-form__label">
+                                    {t('connections.form.host')}
+                                </label>
                                 <TextInput
                                     value={form.host}
                                     onUpdate={update('host')}
@@ -188,7 +199,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
                                 />
                             </div>
                             <div className="conn-form__field conn-form__field--port">
-                                <label className="conn-form__label">{t('connections.form.port')}</label>
+                                <label className="conn-form__label">
+                                    {t('connections.form.port')}
+                                </label>
                                 <TextInput
                                     value={form.port}
                                     onUpdate={update('port')}
@@ -199,7 +212,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">{t('connections.form.database')}</label>
+                            <label className="conn-form__label">
+                                {t('connections.form.database')}
+                            </label>
                             <TextInput
                                 value={form.database}
                                 onUpdate={update('database')}
@@ -210,7 +225,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
 
                         {form.type === 'postgresql' && (
                             <div className="conn-form__field">
-                                <label className="conn-form__label">{t('connections.form.schema')}</label>
+                                <label className="conn-form__label">
+                                    {t('connections.form.schema')}
+                                </label>
                                 <TextInput
                                     value={form.schema}
                                     onUpdate={update('schema')}
@@ -221,7 +238,9 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         )}
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">{t('connections.form.username')}</label>
+                            <label className="conn-form__label">
+                                {t('connections.form.username')}
+                            </label>
                             <TextInput
                                 value={form.username}
                                 onUpdate={update('username')}
@@ -231,14 +250,18 @@ export const ConnectionsPanel: React.FC<Props> = ({
                         </div>
 
                         <div className="conn-form__field">
-                            <label className="conn-form__label">{t('connections.form.password')}</label>
+                            <label className="conn-form__label">
+                                {t('connections.form.password')}
+                            </label>
                             <PasswordInput
                                 value={form.password}
                                 onUpdate={update('password')}
                                 placeholder="••••••••"
                                 size="m"
                             />
-                            <span className="conn-form__hint">{t('connections.form.passwordHint')}</span>
+                            <span className="conn-form__hint">
+                                {t('connections.form.passwordHint')}
+                            </span>
                         </div>
 
                         {scanError && <div className="conn-form__error">{scanError}</div>}

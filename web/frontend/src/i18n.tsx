@@ -1,7 +1,12 @@
 import React from 'react';
 
 import en from './language/en.json';
-import {getLanguagePack, isLanguageRegistered, resolvePlural, subscribeToLanguages} from './language';
+import {
+    getLanguagePack,
+    isLanguageRegistered,
+    resolvePlural,
+    subscribeToLanguages,
+} from './language';
 
 export type Lang = string;
 
@@ -24,7 +29,11 @@ function detectDefaultLang(): Lang {
     return FALLBACK_LANG;
 }
 
-function translate(lang: Lang, key: TranslationKey, vars?: Record<string, string | number>): string {
+function translate(
+    lang: Lang,
+    key: TranslationKey,
+    vars?: Record<string, string | number>,
+): string {
     const template =
         getLanguagePack(lang)?.strings[key] ?? getLanguagePack(FALLBACK_LANG)?.strings[key] ?? key;
     if (!vars) return template;
@@ -69,7 +78,10 @@ export const LanguageProvider: React.FC<{children: React.ReactNode}> = ({childre
         [lang],
     );
 
-    const plural = React.useCallback((n: number, key: PluralKey) => pluralWord(lang, n, key), [lang]);
+    const plural = React.useCallback(
+        (n: number, key: PluralKey) => pluralWord(lang, n, key),
+        [lang],
+    );
 
     const value = React.useMemo(
         () => ({lang, setLang, t, plural}),

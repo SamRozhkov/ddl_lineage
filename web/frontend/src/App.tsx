@@ -14,11 +14,39 @@ import type {
     TGroupProps,
     UseLayeredLayoutParams,
 } from '@gravity-ui/graph';
-import {BlockGroups, EAnchorType, ECanDrag, GraphState, Group, useLayeredLayout} from '@gravity-ui/graph';
+import {
+    BlockGroups,
+    EAnchorType,
+    ECanDrag,
+    GraphState,
+    Group,
+    useLayeredLayout,
+} from '@gravity-ui/graph';
 import {GraphBlock, GraphCanvas, useGraph, useLayer} from '@gravity-ui/graph/react';
-import {ArrowsExpand, ChevronLeft, ChevronRight, ChevronsCollapseUpRight, ClockArrowRotateLeft, Database, Folder, Gear, Moon, Plus, Sun} from '@gravity-ui/icons';
+import {
+    ArrowsExpand,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsCollapseUpRight,
+    ClockArrowRotateLeft,
+    Database,
+    Folder,
+    Gear,
+    Moon,
+    Plus,
+    Sun,
+} from '@gravity-ui/icons';
 import {AsideHeader} from '@gravity-ui/navigation';
-import {Button, Icon, Theme, ThemeProvider, Toaster, ToasterComponent, ToasterProvider, useToaster} from '@gravity-ui/uikit';
+import {
+    Button,
+    Icon,
+    Theme,
+    ThemeProvider,
+    Toaster,
+    ToasterComponent,
+    ToasterProvider,
+    useToaster,
+} from '@gravity-ui/uikit';
 import {ConnectionsPanel} from './ConnectionsPanel';
 import {HistoryPanel} from './HistoryPanel';
 import {LanguageProvider, useI18n} from './i18n';
@@ -27,8 +55,14 @@ import {SettingsPanel} from './SettingsPanel';
 import Editor from '@monaco-editor/react';
 import React from 'react';
 import {format as formatSql} from 'sql-formatter';
-import {ProjectSummary, AnalysisResult, LineageGraphBlock, AnalyzeResponse, SavedConnection, ConnectFormData} from './types';
-
+import {
+    AnalysisResult,
+    AnalyzeResponse,
+    ConnectFormData,
+    LineageGraphBlock,
+    ProjectSummary,
+    SavedConnection,
+} from './types';
 
 const sampleDDL = `CREATE TABLE users (
     id SERIAL PRIMARY KEY,
@@ -239,7 +273,13 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
         } catch (err) {
             const msg = err instanceof Error ? err.message : t('error.connectionFailed');
             setScanError(msg);
-            addToast({name: 'scan-error', theme: 'danger', title: t('toast.scanFailedTitle'), content: msg, autoHiding: 5000});
+            addToast({
+                name: 'scan-error',
+                theme: 'danger',
+                title: t('toast.scanFailedTitle'),
+                content: msg,
+                autoHiding: 5000,
+            });
         } finally {
             setScanning(false);
         }
@@ -248,9 +288,7 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
     const handleRestoreVersion = async (name: string, id: number) => {
         setError('');
         try {
-            const response = await fetch(
-                `/api/project/${encodeURIComponent(name)}/history/${id}`,
-            );
+            const response = await fetch(`/api/project/${encodeURIComponent(name)}/history/${id}`);
             const payload = await response.json();
             if (!response.ok || !payload.success) {
                 throw new Error(payload.error || t('error.restoreFailed'));
@@ -280,9 +318,12 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
 
     const handleDeleteProject = async (name: string) => {
         try {
-            const response = await fetch(`/api/project/${encodeURIComponent(name)}`, {method: 'DELETE'});
+            const response = await fetch(`/api/project/${encodeURIComponent(name)}`, {
+                method: 'DELETE',
+            });
             const payload = await response.json();
-            if (!response.ok || !payload.success) throw new Error(payload.error || t('error.deleteFailed'));
+            if (!response.ok || !payload.success)
+                throw new Error(payload.error || t('error.deleteFailed'));
             setProjects(payload.projects || []);
             addToast({
                 name: 'project-deleted',
@@ -291,7 +332,12 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                 autoHiding: 2500,
             });
         } catch (err) {
-            addToast({name: 'delete-error', theme: 'danger', title: t('toast.deleteFailedTitle'), autoHiding: 3000});
+            addToast({
+                name: 'delete-error',
+                theme: 'danger',
+                title: t('toast.deleteFailedTitle'),
+                autoHiding: 3000,
+            });
         }
     };
 
@@ -305,7 +351,12 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                 autoHiding: 2000,
             });
         } catch {
-            addToast({name: 'copy-error', theme: 'danger', title: t('toast.copyFailedTitle'), autoHiding: 2000});
+            addToast({
+                name: 'copy-error',
+                theme: 'danger',
+                title: t('toast.copyFailedTitle'),
+                autoHiding: 2000,
+            });
         }
     };
 
@@ -435,8 +486,12 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                         </div>
                     </header>
 
-                    <section className={`workspace${editorCollapsed ? ' workspace--collapsed' : ''}`}>
-                        <div className={`editor-pane${editorCollapsed ? ' editor-pane--collapsed' : ''}`}>
+                    <section
+                        className={`workspace${editorCollapsed ? ' workspace--collapsed' : ''}`}
+                    >
+                        <div
+                            className={`editor-pane${editorCollapsed ? ' editor-pane--collapsed' : ''}`}
+                        >
                             <div className="pane-header">
                                 <h2>{t('editor.title')}</h2>
                                 <div className="editor-actions">
@@ -466,14 +521,20 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 onClick={() => void analyze()}
                                                 disabled={loading || !ddl.trim()}
                                             >
-                                                {loading ? t('editor.analyzing') : t('editor.analyze')}
+                                                {loading
+                                                    ? t('editor.analyzing')
+                                                    : t('editor.analyze')}
                                             </button>
                                         </>
                                     )}
                                     <button
                                         type="button"
                                         className="btn-secondary btn-collapse"
-                                        title={editorCollapsed ? t('editor.expand') : t('editor.collapse')}
+                                        title={
+                                            editorCollapsed
+                                                ? t('editor.expand')
+                                                : t('editor.collapse')
+                                        }
                                         onClick={() => setEditorCollapsed((v) => !v)}
                                     >
                                         <Icon
@@ -495,7 +556,8 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                             options={{
                                                 automaticLayout: true,
                                                 minimap: {enabled: false},
-                                                fontFamily: "'IBM Plex Mono', SFMono-Regular, Consolas, monospace",
+                                                fontFamily:
+                                                    "'IBM Plex Mono', SFMono-Regular, Consolas, monospace",
                                                 fontSize: 13,
                                                 lineHeight: 20,
                                                 scrollBeyondLastLine: false,
@@ -520,7 +582,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                     <h2>
                                         {t('results.objects')}
                                         {result && (
-                                            <span className="panel-count">{result.objects.length}</span>
+                                            <span className="panel-count">
+                                                {result.objects.length}
+                                            </span>
                                         )}
                                     </h2>
                                     <div className="table-wrap">
@@ -540,7 +604,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                                 ? `${object.schema}.${object.name}`
                                                                 : object.name}
                                                             {object.temporary && (
-                                                                <span className="temp-badge">{t('node.temp')}</span>
+                                                                <span className="temp-badge">
+                                                                    {t('node.temp')}
+                                                                </span>
                                                             )}
                                                         </td>
                                                         <td>
@@ -553,7 +619,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                         <td>{object.columns.length}</td>
                                                     </tr>
                                                 ))}
-                                                {!result && <EmptyRow colSpan={3} text={t('table.empty')} />}
+                                                {!result && (
+                                                    <EmptyRow colSpan={3} text={t('table.empty')} />
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -565,7 +633,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                     <h2>
                                         {t('results.relationships')}
                                         {result && (
-                                            <span className="panel-count">{result.edges.length}</span>
+                                            <span className="panel-count">
+                                                {result.edges.length}
+                                            </span>
                                         )}
                                     </h2>
                                     <div className="table-wrap">
@@ -595,7 +665,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                         <td>{edge.details || edge.via || '-'}</td>
                                                     </tr>
                                                 ))}
-                                                {!result && <EmptyRow colSpan={4} text={t('table.empty')} />}
+                                                {!result && (
+                                                    <EmptyRow colSpan={4} text={t('table.empty')} />
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -609,12 +681,16 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                         {result?.topo_order?.length ? (
                                             result.topo_order.map((name, i) => (
                                                 <React.Fragment key={name + i}>
-                                                    {i > 0 && <span className="exec-order__sep">→</span>}
+                                                    {i > 0 && (
+                                                        <span className="exec-order__sep">→</span>
+                                                    )}
                                                     <span className="exec-order__step">{name}</span>
                                                 </React.Fragment>
                                             ))
                                         ) : (
-                                            <span className="exec-order__empty">{t('execOrder.empty')}</span>
+                                            <span className="exec-order__empty">
+                                                {t('execOrder.empty')}
+                                            </span>
                                         )}
                                     </div>
                                 </div>
@@ -638,7 +714,10 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 className="btn-secondary"
                                                 disabled={!result}
                                                 onClick={() =>
-                                                    void copyText(JSON.stringify(result, null, 2), 'JSON')
+                                                    void copyText(
+                                                        JSON.stringify(result, null, 2),
+                                                        'JSON',
+                                                    )
                                                 }
                                             >
                                                 {t('export.copyJson')}
@@ -649,7 +728,9 @@ const AppContent = ({theme, setTheme}: {theme: Theme; setTheme: (t: Theme) => vo
                                                 aria-expanded={isMermaidOpen}
                                                 onClick={() => setIsMermaidOpen((open) => !open)}
                                             >
-                                                {isMermaidOpen ? t('export.hidePreview') : t('export.preview')}
+                                                {isMermaidOpen
+                                                    ? t('export.hidePreview')
+                                                    : t('export.preview')}
                                             </button>
                                         </div>
                                     </div>
@@ -724,7 +805,10 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
     }, [result]);
 
     // Functions/procedures as groups + data-flow links
-    const view = React.useMemo(() => (result ? buildLineageView(result, blockDims) : null), [result, blockDims]);
+    const view = React.useMemo(
+        () => (result ? buildLineageView(result, blockDims) : null),
+        [result, blockDims],
+    );
 
     // Input for the built-in layered layout algorithm. Each function group is
     // collapsed into one super-node so that groups never overlap other blocks.
@@ -742,7 +826,9 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
         });
         view.nodes
             .filter((name) => !view.groupOf.has(name))
-            .forEach((name) => blocks.push({id: name, width: blockDims.width, height: blockDims.height}));
+            .forEach((name) =>
+                blocks.push({id: name, width: blockDims.width, height: blockDims.height}),
+            );
 
         const seen = new Set<string>();
         const connections: UseLayeredLayoutParams['connections'] = [];
@@ -752,12 +838,19 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
             const key = `${source}->${target}`;
             if (source === target || seen.has(key)) return;
             seen.add(key);
-            connections.push({id: `layout-${connections.length}`, sourceBlockId: source, targetBlockId: target});
+            connections.push({
+                id: `layout-${connections.length}`,
+                sourceBlockId: source,
+                targetBlockId: target,
+            });
         });
 
         // The built-in level assignment drops every node on a cycle to level 0
         // (e.g. a function reading and updating the same table), so pass our own
-        const levels = computeLayerLevels(blocks.map((b) => String(b.id)), connections);
+        const levels = computeLayerLevels(
+            blocks.map((b) => String(b.id)),
+            connections,
+        );
         for (const block of blocks) {
             block.level = levels.get(String(block.id));
         }
@@ -803,44 +896,58 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
 
     // Build visual entities: layout positions + user overrides
     const graphEntities = React.useMemo(() => {
-        if (!result || !view) return {blocks: [] as LineageGraphBlock[], connections: [] as TConnection[]};
+        if (!result || !view)
+            return {blocks: [] as LineageGraphBlock[], connections: [] as TConnection[]};
 
         const store = userPositionsRef.current;
-        const savedPos = store.forResult === result ? store.map : new Map<string, {x: number; y: number}>();
+        const savedPos =
+            store.forResult === result ? store.map : new Map<string, {x: number; y: number}>();
         const visible = new Set(view.nodes);
 
-        const blocks: LineageGraphBlock[] = result.objects.filter((o) => visible.has(o.name)).map((object) => {
-            const owner = view.groupOf.get(object.name);
-            let layoutPos = layoutResult?.blocks?.[object.name];
-            if (owner) {
-                const group = view.groups.get(owner)!;
-                const groupPos = layoutResult?.blocks?.[groupLayoutId(owner)];
-                const offset = group.offsets.get(object.name)!;
-                layoutPos = groupPos && {x: groupPos.x + offset.x, y: groupPos.y + offset.y};
-            }
-            const pos = savedPos.get(object.name) ?? layoutPos ?? {x: 0, y: 0};
-            return {
-                id: object.name,
-                is: 'lineage-object',
-                group: owner,
-                x: pos.x,
-                y: pos.y,
-                width: blockDims.width,
-                height: blockDims.height,
-                name: object.name,
-                anchors: [
-                    {id: `${object.name}-in`, blockId: object.name, type: EAnchorType.IN, index: 0},
-                    {id: `${object.name}-out`, blockId: object.name, type: EAnchorType.OUT, index: 0},
-                ],
-                meta: {
-                    objectType: object.type,
-                    schema: object.schema,
-                    columns: object.columns.length,
-                    fields: object.columns.map((c) => ({name: c.name, type: c.type})),
-                    temporary: Boolean(object.temporary),
-                },
-            };
-        });
+        const blocks: LineageGraphBlock[] = result.objects
+            .filter((o) => visible.has(o.name))
+            .map((object) => {
+                const owner = view.groupOf.get(object.name);
+                let layoutPos = layoutResult?.blocks?.[object.name];
+                if (owner) {
+                    const group = view.groups.get(owner)!;
+                    const groupPos = layoutResult?.blocks?.[groupLayoutId(owner)];
+                    const offset = group.offsets.get(object.name)!;
+                    layoutPos = groupPos && {x: groupPos.x + offset.x, y: groupPos.y + offset.y};
+                }
+                const pos = savedPos.get(object.name) ?? layoutPos ?? {x: 0, y: 0};
+                return {
+                    id: object.name,
+                    is: 'lineage-object',
+                    group: owner,
+                    x: pos.x,
+                    y: pos.y,
+                    width: blockDims.width,
+                    height: blockDims.height,
+                    name: object.name,
+                    anchors: [
+                        {
+                            id: `${object.name}-in`,
+                            blockId: object.name,
+                            type: EAnchorType.IN,
+                            index: 0,
+                        },
+                        {
+                            id: `${object.name}-out`,
+                            blockId: object.name,
+                            type: EAnchorType.OUT,
+                            index: 0,
+                        },
+                    ],
+                    meta: {
+                        objectType: object.type,
+                        schema: object.schema,
+                        columns: object.columns.length,
+                        fields: object.columns.map((c) => ({name: c.name, type: c.type})),
+                        temporary: Boolean(object.temporary),
+                    },
+                };
+            });
 
         const connections: TConnection[] = view.links
             .filter((l) => visible.has(l.from) && visible.has(l.to))
@@ -897,63 +1004,70 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
         await graphContainerRef.current.requestFullscreen();
     }, []);
 
-    const renderBlock = React.useCallback((currentGraph: Graph, block: TBlock) => {
-        const typedBlock = block as LineageGraphBlock;
-        const meta = typedBlock.meta;
-        const displayName = meta?.schema ? `${meta.schema}.${typedBlock.name}` : typedBlock.name;
-        const objectType = meta?.objectType || 'OBJECT';
-        const fields = meta?.fields || [];
-        const visibleFields = fields.slice(0, 8);
-        const hiddenFieldCount = Math.max(0, fields.length - visibleFields.length);
+    const renderBlock = React.useCallback(
+        (currentGraph: Graph, block: TBlock) => {
+            const typedBlock = block as LineageGraphBlock;
+            const meta = typedBlock.meta;
+            const displayName = meta?.schema
+                ? `${meta.schema}.${typedBlock.name}`
+                : typedBlock.name;
+            const objectType = meta?.objectType || 'OBJECT';
+            const fields = meta?.fields || [];
+            const visibleFields = fields.slice(0, 8);
+            const hiddenFieldCount = Math.max(0, fields.length - visibleFields.length);
 
-        return (
-            <GraphBlock
-                graph={currentGraph}
-                block={typedBlock}
-                className={`lineage-node${meta?.temporary ? ' lineage-node--temporary' : ''}`}
-            >
-                <div className="lineage-node__tooltip" role="tooltip">
-                    <div className="lineage-node__tooltip-header">
-                        <strong>{displayName}</strong>
-                        <span>{objectType}</span>
-                    </div>
-                    <div className="lineage-node__tooltip-fields">
-                        {visibleFields.length ? (
-                            visibleFields.map((field) => (
-                                <div
-                                    key={`${typedBlock.id}-${field.name}`}
-                                    className="lineage-node__tooltip-field"
-                                >
-                                    <span>{field.name}</span>
-                                    <code>{field.type || 'unknown'}</code>
+            return (
+                <GraphBlock
+                    graph={currentGraph}
+                    block={typedBlock}
+                    className={`lineage-node${meta?.temporary ? ' lineage-node--temporary' : ''}`}
+                >
+                    <div className="lineage-node__tooltip" role="tooltip">
+                        <div className="lineage-node__tooltip-header">
+                            <strong>{displayName}</strong>
+                            <span>{objectType}</span>
+                        </div>
+                        <div className="lineage-node__tooltip-fields">
+                            {visibleFields.length ? (
+                                visibleFields.map((field) => (
+                                    <div
+                                        key={`${typedBlock.id}-${field.name}`}
+                                        className="lineage-node__tooltip-field"
+                                    >
+                                        <span>{field.name}</span>
+                                        <code>{field.type || 'unknown'}</code>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="lineage-node__tooltip-empty">
+                                    {t('node.noFields')}
                                 </div>
-                            ))
-                        ) : (
-                            <div className="lineage-node__tooltip-empty">{t('node.noFields')}</div>
-                        )}
-                        {hiddenFieldCount > 0 && (
-                            <div className="lineage-node__tooltip-more">
-                                +
-                                {t('node.moreFields', {
-                                    count: hiddenFieldCount,
-                                    word: plural(hiddenFieldCount, 'field'),
-                                })}
-                            </div>
-                        )}
+                            )}
+                            {hiddenFieldCount > 0 && (
+                                <div className="lineage-node__tooltip-more">
+                                    +
+                                    {t('node.moreFields', {
+                                        count: hiddenFieldCount,
+                                        word: plural(hiddenFieldCount, 'field'),
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-                <div className={`lineage-node__type type-${meta?.objectType.toLowerCase()}`}>
-                    {objectType}
-                </div>
-                {meta?.temporary && <div className="lineage-node__temp">{t('node.temp')}</div>}
-                <div className="lineage-node__name">{typedBlock.name}</div>
-                <div className="lineage-node__meta">
-                    {meta?.schema ? `${meta.schema} · ` : ''}
-                    {meta?.columns ?? 0} {plural(meta?.columns ?? 0, 'column')}
-                </div>
-            </GraphBlock>
-        );
-    }, [t, plural]);
+                    <div className={`lineage-node__type type-${meta?.objectType.toLowerCase()}`}>
+                        {objectType}
+                    </div>
+                    {meta?.temporary && <div className="lineage-node__temp">{t('node.temp')}</div>}
+                    <div className="lineage-node__name">{typedBlock.name}</div>
+                    <div className="lineage-node__meta">
+                        {meta?.schema ? `${meta.schema} · ` : ''}
+                        {meta?.columns ?? 0} {plural(meta?.columns ?? 0, 'column')}
+                    </div>
+                </GraphBlock>
+            );
+        },
+        [t, plural],
+    );
 
     if (!result) {
         const [hintBefore, hintAfter] = t('graph.emptyHint').split('{analyze}');
@@ -1001,8 +1115,12 @@ const LineageGraph = ({result, isDark}: {result: AnalysisResult | null; isDark: 
                     </button>
                     <button
                         type="button"
-                        aria-label={isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')}
-                        title={isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')}
+                        aria-label={
+                            isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')
+                        }
+                        title={
+                            isFullscreen ? t('graph.fullscreenClose') : t('graph.fullscreenOpen')
+                        }
                         onClick={() => void toggleFullscreen()}
                     >
                         <Icon
@@ -1091,7 +1209,9 @@ function computeLayerLevels(
 
     const level = new Map(ids.map((id) => [id, 0]));
     order.reverse().forEach((id) => {
-        dagOut.get(id)!.forEach((next) => level.set(next, Math.max(level.get(next)!, level.get(id)! + 1)));
+        dagOut
+            .get(id)!
+            .forEach((next) => level.set(next, Math.max(level.get(next)!, level.get(id)! + 1)));
     });
     return level;
 }
@@ -1101,7 +1221,9 @@ function packLayers(
     positions: Record<string, {x: number; y: number}>,
     nodes: UseLayeredLayoutParams['blocks'],
 ): Record<string, {x: number; y: number}> {
-    const sizes = new Map(nodes.map((n) => [String(n.id), {width: n.width ?? 0, height: n.height ?? 0}]));
+    const sizes = new Map(
+        nodes.map((n) => [String(n.id), {width: n.width ?? 0, height: n.height ?? 0}]),
+    );
     const layers = new Map<number, string[]>();
     Object.entries(positions).forEach(([id, pos]) => {
         if (!sizes.has(id)) return;
@@ -1141,17 +1263,23 @@ function packLayers(
  * starts or ends at the function (a write with no source, a read with no
  * target) or the group would otherwise be empty.
  */
-function buildLineageView(result: AnalysisResult, blockDims: {width: number; height: number}): LineageView {
+function buildLineageView(
+    result: AnalysisResult,
+    blockDims: {width: number; height: number},
+): LineageView {
     const names = new Set(result.objects.map((o) => o.name));
     const owners = new Set(
-        result.objects.filter((o) => GROUP_OWNER_TYPES.has(o.type.toUpperCase())).map((o) => o.name),
+        result.objects
+            .filter((o) => GROUP_OWNER_TYPES.has(o.type.toUpperCase()))
+            .map((o) => o.name),
     );
 
     const links: LineageLink[] = [];
     const seen = new Set<string>();
     const addLink = (link: LineageLink) => {
         const key = `${link.from}|${link.to}|${link.type}|${link.details}`;
-        if (link.from === link.to || seen.has(key) || !names.has(link.from) || !names.has(link.to)) return;
+        if (link.from === link.to || seen.has(key) || !names.has(link.from) || !names.has(link.to))
+            return;
         seen.add(key);
         links.push(link);
     };
@@ -1197,7 +1325,8 @@ function buildLineageView(result: AnalysisResult, blockDims: {width: number; hei
 /** Name the function when a flow it performs runs entirely outside its group */
 function linkLabel(link: LineageLink, groupOf: Map<string, string>): string {
     const label = link.details ? `${link.type} ${link.details}` : link.type;
-    const outsideGroup = link.via && groupOf.get(link.from) !== link.via && groupOf.get(link.to) !== link.via;
+    const outsideGroup =
+        link.via && groupOf.get(link.from) !== link.via && groupOf.get(link.to) !== link.via;
     return outsideGroup ? `${label} · ƒ ${link.via}` : label;
 }
 
@@ -1250,7 +1379,8 @@ function layoutGroup(
         owner,
         members,
         offsets,
-        width: GROUP_PADDING.left + filled.length * colStep - GROUP_INNER_GAP.x + GROUP_PADDING.right,
+        width:
+            GROUP_PADDING.left + filled.length * colStep - GROUP_INNER_GAP.x + GROUP_PADDING.right,
         height: GROUP_PADDING.top + contentHeight + GROUP_PADDING.bottom,
     };
 }
@@ -1270,7 +1400,12 @@ class FunctionGroup extends Group<TFunctionGroup> {
                     ...props.style,
                 },
                 geometry: {
-                    padding: [GROUP_PADDING.top, GROUP_PADDING.right, GROUP_PADDING.bottom, GROUP_PADDING.left],
+                    padding: [
+                        GROUP_PADDING.top,
+                        GROUP_PADDING.right,
+                        GROUP_PADDING.bottom,
+                        GROUP_PADDING.left,
+                    ],
                     ...props.geometry,
                 },
             },

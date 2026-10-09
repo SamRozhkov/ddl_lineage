@@ -69,12 +69,24 @@ function computeDiff(a: AnalysisResult, b: AnalysisResult) {
     const edges: EdgeDiff[] = [];
     a.edges.forEach((e) => {
         const k = edgeKey(e);
-        edges.push({key: k, source: e.source, target: e.target, edgeType: e.type, status: edgesB.has(k) ? 'unchanged' : 'added'});
+        edges.push({
+            key: k,
+            source: e.source,
+            target: e.target,
+            edgeType: e.type,
+            status: edgesB.has(k) ? 'unchanged' : 'added',
+        });
     });
     b.edges.forEach((e) => {
         const k = edgeKey(e);
         if (!edgesA.has(k)) {
-            edges.push({key: k, source: e.source, target: e.target, edgeType: e.type, status: 'removed'});
+            edges.push({
+                key: k,
+                source: e.source,
+                target: e.target,
+                edgeType: e.type,
+                status: 'removed',
+            });
         }
     });
     edges.sort((x, y) => order[x.status] - order[y.status] || x.key.localeCompare(y.key));
@@ -174,9 +186,14 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
                                         −{removedEdges} {plural(removedEdges, 'edge')}
                                     </span>
                                 )}
-                                {addedObjects === 0 && removedObjects === 0 && addedEdges === 0 && removedEdges === 0 && (
-                                    <span className="compare-chip">{t('compare.noChanges')}</span>
-                                )}
+                                {addedObjects === 0 &&
+                                    removedObjects === 0 &&
+                                    addedEdges === 0 &&
+                                    removedEdges === 0 && (
+                                        <span className="compare-chip">
+                                            {t('compare.noChanges')}
+                                        </span>
+                                    )}
                             </div>
 
                             <div className="compare-section-title">{t('compare.objects')}</div>
@@ -201,11 +218,17 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
                                                     className={`diff-row diff-row--${obj.status}`}
                                                 >
                                                     <td className="diff-status">
-                                                        {obj.status === 'added' ? '+' : obj.status === 'removed' ? '−' : ''}
+                                                        {obj.status === 'added'
+                                                            ? '+'
+                                                            : obj.status === 'removed'
+                                                              ? '−'
+                                                              : ''}
                                                     </td>
                                                     <td>{displayName}</td>
                                                     <td>
-                                                        <span className={`edge type-${obj.type.toLowerCase()}`}>
+                                                        <span
+                                                            className={`edge type-${obj.type.toLowerCase()}`}
+                                                        >
                                                             {obj.type}
                                                         </span>
                                                     </td>
@@ -218,9 +241,11 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
                                 </table>
                             </div>
 
-                            {(diff.edges.length > 0) && (
+                            {diff.edges.length > 0 && (
                                 <>
-                                    <div className="compare-section-title">{t('compare.edges')}</div>
+                                    <div className="compare-section-title">
+                                        {t('compare.edges')}
+                                    </div>
                                     <div className="table-wrap">
                                         <table>
                                             <thead>
@@ -238,11 +263,17 @@ export const CompareModal: React.FC<Props> = ({open, onClose, projectName, versi
                                                         className={`diff-row diff-row--${edge.status}`}
                                                     >
                                                         <td className="diff-status">
-                                                            {edge.status === 'added' ? '+' : edge.status === 'removed' ? '−' : ''}
+                                                            {edge.status === 'added'
+                                                                ? '+'
+                                                                : edge.status === 'removed'
+                                                                  ? '−'
+                                                                  : ''}
                                                         </td>
                                                         <td>{edge.source}</td>
                                                         <td>
-                                                            <span className={`edge edge-${edge.edgeType.toLowerCase()}`}>
+                                                            <span
+                                                                className={`edge edge-${edge.edgeType.toLowerCase()}`}
+                                                            >
                                                                 {edge.edgeType}
                                                             </span>
                                                         </td>

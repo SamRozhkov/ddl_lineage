@@ -123,7 +123,9 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                                                 className="version-item__check"
                                                 checked={isSelected}
                                                 onChange={() => toggleSelect(entry.id)}
-                                                aria-label={t('history.selectVersion', {v: history.length - index})}
+                                                aria-label={t('history.selectVersion', {
+                                                    v: history.length - index,
+                                                })}
                                             />
                                         )}
                                         <div className="version-item__meta">
@@ -165,8 +167,12 @@ export const HistoryPanel: React.FC<Props> = ({projectName, onRestoreVersion}) =
                             <div className="history-compare-bar">
                                 <span className="history-compare-bar__label">
                                     {t('history.compareLabel', {
-                                        a: history.length - history.findIndex((h) => h.id === selectedIds[0]),
-                                        b: history.length - history.findIndex((h) => h.id === selectedIds[1]),
+                                        a:
+                                            history.length -
+                                            history.findIndex((h) => h.id === selectedIds[0]),
+                                        b:
+                                            history.length -
+                                            history.findIndex((h) => h.id === selectedIds[1]),
                                     })}
                                 </span>
                                 <button
