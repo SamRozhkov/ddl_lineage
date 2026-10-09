@@ -1,4 +1,12 @@
 module.exports = function override(config /*, env*/) {
+    // The webpack ESLint pass keeps CRA's own react-app rules; the project style
+    // config (.eslintrc, @gravity-ui/eslint-config) is checked by `npm run lint`
+    config.plugins
+        .filter((plugin) => plugin.constructor.name === 'ESLintWebpackPlugin')
+        .forEach((plugin) => {
+            plugin.options.useEslintrc = false;
+        });
+
     return {
         ...config,
         ignoreWarnings: [

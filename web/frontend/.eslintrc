@@ -1,0 +1,5 @@
+{
+  "extends": ["@gravity-ui/eslint-config", "@gravity-ui/eslint-config/client", "@gravity-ui/eslint-config/prettier"],
+  "root": true,
+  "ignorePatterns": ["build", "node_modules", "config-overrides.js"]
+}
