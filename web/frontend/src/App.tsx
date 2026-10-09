@@ -52,7 +52,7 @@ import {HistoryPanel} from './HistoryPanel';
 import {LanguageProvider, useI18n} from './i18n';
 import {ProjectsPanel} from './ProjectsPanel';
 import {SettingsPanel} from './SettingsPanel';
-import Editor from '@monaco-editor/react';
+import Editor, {loader} from '@monaco-editor/react';
 import React from 'react';
 import {format as formatSql} from 'sql-formatter';
 import {
@@ -63,6 +63,12 @@ import {
     ProjectSummary,
     SavedConnection,
 } from './types';
+
+// The editor loads Monaco from the CDN at runtime (it is not bundled). Pin it to
+// the version in package.json - @monaco-editor/loader's default (0.55.1) ships a
+// DOMPurify with known XSS advisories.
+const MONACO_VERSION = '0.57.0';
+loader.config({paths: {vs: `https://cdn.jsdelivr.net/npm/monaco-editor@${MONACO_VERSION}/min/vs`}});
 
 const sampleDDL = `CREATE TABLE users (
     id SERIAL PRIMARY KEY,
